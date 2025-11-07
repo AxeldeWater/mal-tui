@@ -206,11 +206,11 @@ impl MalAgent {
                 };
                 html_content = html_content
                     .replace("{{redirect_url}}", &local_url)
-                    .replace("{{access_token}}", &token)
-                    .replace("{{refresh_token}}", &refresh_token)
+                    .replace("{{access_token}}", token)
+                    .replace("{{refresh_token}}", refresh_token)
                     .replace("{{expires_in}}", &expires_in.to_string());
 
-                return (html_content, 200);
+                (html_content, 200)
             }
 
             //ERROR: s
@@ -221,7 +221,7 @@ impl MalAgent {
                 };
 
                 html_content = html_content.replace("{{error}}", &e.to_string());
-                return (html_content, 500);
+                (html_content, 500)
             }
         }
     }
@@ -243,11 +243,18 @@ fn main() {
             if let Ok(mut guard) = cleanup_agent.lock() {
                 let removed = guard.cleanup_expired_data(max_age);
                 let now = Local::now().format("%Y-%m-%d %H:%M:%S");
+                let remaining = guard.temp_storage.len();
+
+                // do not need to print when nothing changes
+                if removed == 0 && remaining == 0 {
+                    continue;
+                }
+
                 println!(
                     "[{}] Cleaned up {} expired states, {} states remaining",
                     now,
                     removed,
-                    guard.temp_storage.len()
+                    remaining
                 );
                 std::io::stdout().flush().unwrap();
             }
@@ -260,6 +267,19 @@ fn main() {
         router!(request,
             (GET) (/) => {
                 rouille::Response::text("hello")
+            },
+
+
+
+            (GET) (/health) => {
+                rouille::Response::text("ok")
+            },
+
+
+
+            (GET) (/id) => {
+                let guard = mal_agent.lock().unwrap();
+                rouille::Response::text(guard.client_id.clone())
             },
 
 

@@ -1,7 +1,8 @@
 version: "3.9"
 services:
   app:
-    image: dogfetus/mal-cli:latest 
+    # image: dogfetus/mal-cli:latest 
+    build: .
     env_file:
       - .env
     ports:
