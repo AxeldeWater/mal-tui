@@ -245,6 +245,7 @@ impl MalClient {
     }
 
     pub fn get_suggested_anime(&self, offset: usize, limit: usize) -> Option<Vec<Anime>> {
+        if !MalClient::user_is_logged_in(){ return None; }
         self.send_request::<Anime>(
             format!("{}/anime/suggestions", BASE_URL),
             params![
@@ -298,6 +299,7 @@ impl MalClient {
         offset: usize,
         limit: usize,
     ) -> Option<Vec<Anime>> {
+        if !MalClient::user_is_logged_in(){ return None; }
         self.get_anime_list_by_user("@me".to_string(), status, offset, limit)
     }
 

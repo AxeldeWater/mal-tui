@@ -1,11 +1,17 @@
+use crate::utils::imageManager::HasDisplayableImage; 
+use crate::utils::store::Storable;
+use crate::mal::network::fetch_favorited_anime;
+use crate::mal::network::fetch_anime;
+use crate::mal::network::Identifier;
+use crate::mal::network::Update;
+use crate::mal::Fetchable;
 use super::na;
-use crate::{
-    mal::{
-        Fetchable, network::{Identifier, Update, fetch_anime, fetch_favorited_anime}
-    },
-    utils::{imageManager::HasDisplayableImage, store::Storable},
-};
-use serde::{Deserialize, Deserializer, Serialize};
+
+
+use database::*;
+use serde::Deserializer;
+use serde::Deserialize;
+use serde::Serialize;
 use std::fmt::{self};
 
 // season limit (first season ever) : year: 1917 season: winter
@@ -99,38 +105,38 @@ pub mod fields {
     pub const STUDIOS: &str = "studios";
     pub const STATISTICS: &str = "statistics";
     pub const ALL: [&str; 32] = [
-        ID,
-        TITLE,
-        MAIN_PICTURE,
-        ALTERNATIVE_TITLES,
-        START_DATE,
-        END_DATE,
-        SYNOPSIS,
-        MEAN,
-        RANK,
-        POPULARITY,
-        NUM_LIST_USERS,
-        NUM_SCORING_USERS,
-        NSFW,
-        CREATED_AT,
-        UPDATED_AT,
-        MEDIA_TYPE,
-        STATUS,
-        GENRES,
-        MY_LIST_STATUS,
-        NUM_EPISODES,
-        START_SEASON,
-        BROADCAST,
-        SOURCE,
         AVERAGE_EPISODE_DURATION,
-        RATING,
-        PICTURES,
-        BACKGROUND,
-        RELATED_ANIME,
-        RELATED_MANGA,
+        ALTERNATIVE_TITLES,
+        NUM_SCORING_USERS,
         RECOMMENDATIONS,
-        STUDIOS,
+        NUM_LIST_USERS,
+        MY_LIST_STATUS,
+        RELATED_MANGA,
+        RELATED_ANIME,
+        MAIN_PICTURE,
+        START_SEASON,
+        NUM_EPISODES,
         STATISTICS,
+        START_DATE,
+        MEDIA_TYPE,
+        UPDATED_AT,
+        POPULARITY,
+        BACKGROUND,
+        CREATED_AT,
+        BROADCAST,
+        SYNOPSIS,
+        PICTURES,
+        END_DATE,
+        STUDIOS,
+        GENRES,
+        RATING,
+        SOURCE,
+        STATUS,
+        TITLE,
+        NSFW,
+        RANK,
+        MEAN,
+        ID,
     ];
 }
 
@@ -167,9 +173,10 @@ pub mod fields {
 /// - `studios` - Animation studios
 /// - `statistics` - User interaction stats
 #[allow(unused)]
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Entry)]
 pub struct Anime {
     /// Unique identifier for the anime
+    #[primary_key]
     #[serde(default)]
     pub id: usize,
 
@@ -775,3 +782,4 @@ impl Storable for Anime {
         self.id
     }
 }
+

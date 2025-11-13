@@ -14,9 +14,9 @@ use crate::mal::network::send_request_expect_text;
 use crate::params;
 use crate::utils::stringManipulation::levenshtein_distance;
 use serde_json::json;
+use shell_escape::escape;
 use std::io::ErrorKind;
 use std::process::Command;
-use shell_escape::escape;
 
 const BASE: &str = "https://allanime.day";
 const API: &str = "https://api.allanime.day/api";
@@ -44,7 +44,7 @@ pub struct PlayResult {
     pub total_time: String,
     pub percentage: u8,
     pub fully_watched: bool,
-    pub completed: bool,
+    pub is_completed: bool,
 }
 
 pub struct AnimePlayer {
@@ -112,11 +112,11 @@ impl AnimePlayer {
             return Some(PlayResult {
                 current_time: "00:00:00".to_string(),
                 total_time: "00:00:00".to_string(),
-                completed: false,
+                is_completed: false,
                 fully_watched: false,
                 percentage: 0,
                 episode,
-            })
+            });
         }
 
         let last_av = if let Some(last_av) = stdout.rfind("AV: ") {
@@ -137,7 +137,7 @@ impl AnimePlayer {
         Some(PlayResult {
             current_time: last_av[1].to_string(),
             total_time: last_av[2].to_string(),
-            completed: percentage >= 90,
+            is_completed: percentage >= 90,
             fully_watched: exit_reason == Some("End of file"),
             percentage,
             episode,
@@ -156,12 +156,11 @@ impl AnimePlayer {
         ratatui::restore();
 
         // hook
-        if let Some(hook) = Config::global().player.pre_playback_hook.clone() {
-            if let Err(e) = self.run_command(&hook, anime, episode, None) {
-                eprintln!("Failed to run pre-playback hook: {}", e);
-            }
+        if let Some(hook) = Config::global().player.pre_playback_hook.clone()
+            && let Err(e) = self.run_command(&hook, anime, episode, None)
+        {
+            eprintln!("Failed to run pre-playback hook: {}", e);
         };
-
 
         // get available shows for the given anime title
         let shows = self.get_shows(anime.title.clone())?;
@@ -181,12 +180,11 @@ impl AnimePlayer {
             self.play_video_in_mpv(&candidate)?
         };
 
-
         // hook
-        if let Some(hook) = Config::global().player.post_playback_hook.clone() {
-            if let Err(e) = self.run_command(&hook, anime, episode, Some(&candidate)) {
-                eprintln!("Failed to run pre-playback hook: {}", e);
-            }
+        if let Some(hook) = Config::global().player.post_playback_hook.clone()
+            && let Err(e) = self.run_command(&hook, anime, episode, Some(&candidate))
+        {
+            eprintln!("Failed to run pre-playback hook: {}", e);
         };
 
         // mark as completed
@@ -194,7 +192,7 @@ impl AnimePlayer {
             return Ok(PlayResult {
                 current_time: "00:00:00".to_string(),
                 total_time: "00:00:00".to_string(),
-                completed: true,
+                is_completed: true,
                 fully_watched: true,
                 percentage: 100,
                 episode,
@@ -247,17 +245,15 @@ impl AnimePlayer {
                 }
                 Ok(response.data.shows.edges)
             }
-            Err(e) => {
-                Err(PlayError::Other(format!("Error fetching shows: {}", e)))
-            }
+            Err(e) => Err(PlayError::Other(format!("Error fetching shows: {}", e))),
         }
     }
 
     // finds the correct show id from the list of shows and returns its id
     fn extract_correct_id(&self, shows: &[ShowEdge], anime: &Anime) -> Result<String, PlayError> {
-
         // Try to match name exactly first:
-        let show = shows.iter()
+        let show = shows
+            .iter()
             .find(|s| s.name.eq_ignore_ascii_case(&anime.title))
             .or_else(|| {
                 // If no exact match, find the one(s) with lowest distance
@@ -266,31 +262,42 @@ impl AnimePlayer {
                 }
 
                 // Calculate distances for all shows
-                let distances: Vec<(usize, &ShowEdge)> = shows.iter()
-                    .map(|s| (levenshtein_distance(&s.name.to_lowercase(), &anime.title.to_lowercase()), s))
+                let distances: Vec<(usize, &ShowEdge)> = shows
+                    .iter()
+                    .map(|s| {
+                        (
+                            levenshtein_distance(
+                                &s.name.to_lowercase(),
+                                &anime.title.to_lowercase(),
+                            ),
+                            s,
+                        )
+                    })
                     .collect();
 
                 // Find the minimum distance
-                let min_distance = distances.iter()
-                    .map(|(dist, _)| *dist)
-                    .min()
-                    .unwrap();
+                let min_distance = distances.iter().map(|(dist, _)| *dist).min().unwrap();
 
-                // Get all the smallest distance matches 
-                let best_matches = distances.into_iter()
+                // Get all the smallest distance matches
+                let best_matches = distances
+                    .into_iter()
                     .filter(|(dist, _)| *dist == min_distance)
                     .map(|(_, show)| show)
                     .collect::<Vec<&ShowEdge>>();
 
                 // select the one with the most episodes:
-                best_matches.into_iter()
+                best_matches
+                    .into_iter()
                     .max_by_key(|show| show.available_episodes.sub + show.available_episodes.dub)
             })
-            .ok_or(PlayError::NoResults(
-                "No shows found".to_string(),
-            ))?;
+            .ok_or(PlayError::NoResults("No shows found".to_string()))?;
 
-        println!("Playing \"{}\" ({}) episode: {}", show.name, show.id, anime.my_list_status.num_episodes_watched + 1);
+        println!(
+            "Playing \"{}\" ({}) episode: {}",
+            show.name,
+            show.id,
+            anime.my_list_status.num_episodes_watched + 1
+        );
 
         Ok(show.id.clone())
     }
@@ -365,15 +372,13 @@ impl AnimePlayer {
 
                 Ok(response.data.episode.source_urls)
             }
-            Err(e) => {
-                Err(PlayError::Other(format!("Error fetching episodes: {}", e)))
-            }
+            Err(e) => Err(PlayError::Other(format!("Error fetching episodes: {}", e))),
         }
     }
 
     fn decode_clock(enc: &str) -> Result<(String, bool), String> {
         let bytes = enc.trim_start_matches("--");
-        if bytes.len() % 2 != 0 {
+        if !bytes.len().is_multiple_of(2) {
             return Err("odd-length clock encoding".into());
         }
 
@@ -671,16 +676,13 @@ impl AnimePlayer {
             cmd.arg(format!("--referrer={}", referer));
         }
 
-        let output = cmd
-            .arg(&info.0)
-            .output()
-            .map_err(|e| {
-                if e.kind() == ErrorKind::NotFound {
-                    PlayError::NotFound("mpv is not installed or not found in PATH".to_string())
-                } else {
-                    PlayError::Other(format!("Error running mpv: \n{}", e))
-                }
-            })?;
+        let output = cmd.arg(&info.0).output().map_err(|e| {
+            if e.kind() == ErrorKind::NotFound {
+                PlayError::NotFound("mpv is not installed or not found in PATH".to_string())
+            } else {
+                PlayError::Other(format!("Error running mpv: \n{}", e))
+            }
+        })?;
 
         let messy_stdout = String::from_utf8_lossy(&output.stdout);
         let messy_stderr = String::from_utf8_lossy(&output.stderr);
@@ -709,12 +711,21 @@ impl AnimePlayer {
         episode: u32,
         url: Option<&(String, Option<String>)>,
     ) -> Result<(), String> {
-        let cmd = command 
+        let cmd = command
             .replace("{title}", &escape(anime.title.clone().into()))
             .replace("{episode}", &escape(episode.to_string().into()))
-            .replace( "{url}", &escape(url.map(|u| u.0.as_str()).unwrap_or_default().into()))
-            .replace( "{referer}", &escape(url.and_then(|u| u.1.as_deref()).unwrap_or("").into()))
-            .replace( "{referrer}", &escape(url.and_then(|u| u.1.as_deref()).unwrap_or("").into()));
+            .replace(
+                "{url}",
+                &escape(url.map(|u| u.0.as_str()).unwrap_or_default().into()),
+            )
+            .replace(
+                "{referer}",
+                &escape(url.and_then(|u| u.1.as_deref()).unwrap_or("").into()),
+            )
+            .replace(
+                "{referrer}",
+                &escape(url.and_then(|u| u.1.as_deref()).unwrap_or("").into()),
+            );
 
         #[cfg(unix)]
         let status = Command::new("sh")

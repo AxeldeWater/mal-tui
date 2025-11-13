@@ -1,7 +1,5 @@
 use crate::{mal::{Fetchable, network::{Identifier, fetch_user}}, utils::imageManager::HasDisplayableImage};
-
 use serde::{Deserialize, Serialize};
-
 use super::anime::{Anime, FavoriteAnime};
 
 fn default_picture() -> String {

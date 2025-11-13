@@ -1,23 +1,23 @@
 use crate::config::Config;
 use crate::handlers::get_handlers;
 use crate::mal::MalClient;
+use crate::mal::models::WatchHistory;
 use crate::mal::models::anime::Anime;
 use crate::mal::models::anime::AnimeId;
-use crate::player;
 use crate::screens::BackgroundUpdate;
 use crate::screens::ScreenManager;
 use crate::utils::errorBus;
 use crate::utils::store::Store;
+use crate::player;
 
+use database::DatabaseManager;
 use chrono::DateTime;
 use chrono::Local;
 use crossterm::event::DisableMouseCapture;
 use crossterm::event::EnableMouseCapture;
 use image::DynamicImage;
 use ratatui::DefaultTerminal;
-use std::fs::OpenOptions;
 use std::io;
-use std::io::Write;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc;
@@ -110,6 +110,7 @@ pub struct App {
     terminal: DefaultTerminal,
     shared_info: ExtraInfo,
     anime_player: player::AnimePlayer,
+    db_manager: DatabaseManager,
 
     sx: mpsc::Sender<Event>,
     rx: mpsc::Receiver<Event>,
@@ -120,9 +121,14 @@ pub struct App {
 impl App {
     pub fn new(terminal: DefaultTerminal) -> App {
         let (sx, rx) = mpsc::channel::<Event>();
-
         errorBus::init(sx.clone());
 
+        let db_path = Config::data_dir()
+            .join("log.db")
+            .to_string_lossy()
+            .to_string();
+        let db_manager =
+            DatabaseManager::new(db_path).expect("Failed to initialize database manager");
         let mal_client = Arc::new(MalClient::new());
         let universal_info = ExtraInfo {
             app_sx: sx.clone(),
@@ -133,11 +139,12 @@ impl App {
         App {
             mal_client: mal_client.clone(),
             screen_manager: ScreenManager::new(universal_info.clone()),
-            current_info: None,
-            is_running: true,
-            terminal,
-            shared_info: universal_info,
             anime_player: player::AnimePlayer::new(),
+            current_info: None,
+            shared_info: universal_info,
+            is_running: true,
+            db_manager,
+            terminal,
 
             rx,
             sx,
@@ -194,30 +201,25 @@ impl App {
         Ok(())
     }
 
-    fn logg_watched_info(&self, anime: &Anime, details: &player::PlayResult) {
-        let app_dir = Config::data_dir();
+    fn log_watched_info(&self, anime: &Anime, details: player::PlayResult) {
         let now: DateTime<Local> = Local::now();
         let timestamp = now.format("%Y-%m-%d %H:%M:%S");
-        let log_file = app_dir.join("watch_history");
-        let log_entry = format!(
-            "{} -> {} -> \"{}\" -> {} -> {}/{} -> {} -> {}\n",
-            timestamp,
-            anime.id,
-            anime.title,
-            details.episode,
-            details.current_time,
-            details.total_time,
-            details.percentage,
-            details.completed
-        );
 
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(log_file)
-            .expect("Failed to open log file");
+        let history = WatchHistory {
+            id: 0,
+            anime_id: anime.id,
+            timestamp: timestamp.to_string(),
+            episode: details.episode as i32,
+            current_time: details.current_time,
+            total_time: details.total_time,
+            percentage: details.percentage,
+            is_completed: details.is_completed,
+        };
 
-        file.write_all(log_entry.as_bytes()).ok();
+        self.db_manager.create_table::<Anime>().ok();
+        self.db_manager.create_table::<WatchHistory>().ok();
+        self.db_manager.insert(anime.clone()).ok();
+        self.db_manager.insert(history).ok();
     }
 
     fn play_anime(&mut self, anime_id: AnimeId, episode: u32) -> Option<()> {
@@ -238,16 +240,16 @@ impl App {
             .anime_player
             .play_episode_manually(&anime, next_episode)
         {
-            Ok(details) => {
-                // update teh status to now watching
+            Ok(episode_details) => {
+                // update the status to now watching (in memory first)
                 self.shared_info
                     .anime_store
                     .update(anime.id, |anime_to_update| {
-                        anime_to_update.my_list_status.status = "watching".to_string();
+                        anime_to_update.my_list_status.status = "watching".into();
                     });
 
-                if details.completed {
-                    // update the store <-
+                if episode_details.is_completed {
+                    // update the number of episodes watched 
                     self.shared_info
                         .anime_store
                         .update(anime.id, |anime_to_update| {
@@ -256,17 +258,22 @@ impl App {
                             {
                                 anime_to_update.my_list_status.num_episodes_watched += 1;
                             } else {
-                                anime_to_update.my_list_status.status = "completed".to_string();
+                                anime_to_update.my_list_status.status = "completed".into();
                             }
                         });
                 }
-                // get the anime again to make sure the details are up to date with the update above
+
+                // get the anime with the updated details from above
                 let updated = self.shared_info.anime_store.get(&anime.id)?;
-                self.shared_info
-                    .mal_client
-                    .update_user_list_async((*updated).clone());
+
+                // now update this to the mal servers if the user is logged in
+                if MalClient::user_is_logged_in(){
+                    self.shared_info
+                        .mal_client
+                        .update_user_list_async((*updated).clone());
+                }
                 self.screen_manager.refresh();
-                self.logg_watched_info(&anime, &details);
+                self.log_watched_info(&anime, episode_details);
             }
             Err(e) => {
                 self.screen_manager.show_error(e.to_string());

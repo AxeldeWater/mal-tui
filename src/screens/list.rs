@@ -12,7 +12,6 @@ use crate::utils::input::Input;
 use crate::{add_screen_caching, check_for_account};
 use crate::{app::Action, screens::Screen};
 
-use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
 use ratatui::Frame;
 use ratatui::layout::Layout;

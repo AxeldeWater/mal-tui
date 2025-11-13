@@ -14,7 +14,6 @@ use crate::{
         models::anime::{Anime, AnimeId, DeleteOrUpdate, MyListStatus, status_is_known},
     },
     screens::{BackgroundUpdate, ExtraInfo},
-    send_error,
     utils::{
         imageManager::ImageManager,
         stringManipulation::{DisplayString, format_date},
@@ -162,7 +161,6 @@ impl AnimePopup {
         }))
     }
 
-    // TODO: then this is not needed
     pub fn apply_update(&mut self, mut update: BackgroundUpdate) {
         if let Some((index, (_, update))) =
             update.take::<(usize, (usize, DeleteOrUpdate))>("success")
@@ -512,20 +510,20 @@ impl AnimePopup {
         }
 
         // the synopsis area
-        if let Some(s_area) = self.synopsis_area {
-            if s_area.contains(pos) {
-                self.focus = Focus::Synopsis;
-                match mouse_event.kind {
-                    MouseEventKind::ScrollUp => {
-                        self.synopsis_scroll = self.synopsis_scroll.saturating_sub(1);
-                    }
-                    MouseEventKind::ScrollDown => {
-                        self.synopsis_scroll += 1;
-                    }
-                    _ => {}
+        if let Some(s_area) = self.synopsis_area
+            && s_area.contains(pos)
+        {
+            self.focus = Focus::Synopsis;
+            match mouse_event.kind {
+                MouseEventKind::ScrollUp => {
+                    self.synopsis_scroll = self.synopsis_scroll.saturating_sub(1);
                 }
-                return None;
+                MouseEventKind::ScrollDown => {
+                    self.synopsis_scroll += 1;
+                }
+                _ => {}
             }
+            return None;
         }
 
         // close the whole popup
@@ -1039,10 +1037,10 @@ impl SeasonPopup {
         // if the season area has been rendered yet
         let activate_area = self.activate_area?;
         let mouse_pos = Position::new(mouse_event.column, mouse_event.row);
-        if activate_area.contains(mouse_pos) {
-            if let crossterm::event::MouseEventKind::Down(_) = mouse_event.kind {
-                self.toggle();
-            }
+        if activate_area.contains(mouse_pos)
+            && let crossterm::event::MouseEventKind::Down(_) = mouse_event.kind
+        {
+            self.toggle();
         }
 
         // the popup below the season area
