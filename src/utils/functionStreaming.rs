@@ -4,14 +4,13 @@ pub struct StreamableRunner {
     max_of_batches: Option<usize>,
     early_stop: bool,
 
-    // for changeing 
+    // for changeing
     new_batch_size: Option<usize>,
     new_batch_index: usize,
 }
 
 /// default batch size 20
-impl StreamableRunner
-{
+impl StreamableRunner {
     pub fn new() -> Self {
         StreamableRunner {
             max_batch_size: 20,
@@ -71,24 +70,23 @@ impl StreamableRunner
         let mut offset: usize = 0;
         let mut early_stop = false;
         let mut iteration = 0;
-        let mut max_batch_size= self.max_batch_size;
+        let mut max_batch_size = self.max_batch_size;
 
         std::iter::from_fn(move || {
             if early_stop {
                 return None;
             }
 
-            if let Some(limit) = self.max_of_batches{
-                if limit == iteration {
-                    return None;
-                }
+            if let Some(limit) = self.max_of_batches
+                && limit == iteration
+            {
+                return None;
             }
 
-
-            if let Some(new_size) = self.new_batch_size {
-                if iteration == self.new_batch_index {
-                    max_batch_size = new_size;
-                }
+            if let Some(new_size) = self.new_batch_size
+                && iteration == self.new_batch_index
+            {
+                max_batch_size = new_size;
             }
 
             let batch = fetch_fn(offset, max_batch_size)?;

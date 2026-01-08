@@ -7,9 +7,8 @@ use quote::quote;
 use syn::Fields;
 use syn::Data;
 use syn::Type; 
-use syn::Meta;
 
-#[proc_macro_derive(Entry, attributes(table_name, primary_key, skip, foreign_key))]
+#[proc_macro_derive(Entry, attributes(table_name, primary_key, skip, foreign_key, autoincrement))]
 pub fn derive_entry(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let name = &input.ident;
@@ -36,6 +35,8 @@ pub fn derive_entry(input: TokenStream) -> TokenStream {
     let mut schema_parts = Vec::new();
     let mut bind_fields = Vec::new();
     let mut foreign_keys = Vec::new();
+    let mut from_row_fields = Vec::new();
+    let mut field_index = 0;
 
     for field in fields {
         let field_name = field.ident.as_ref().unwrap();
@@ -45,6 +46,14 @@ pub fn derive_entry(input: TokenStream) -> TokenStream {
         if field.attrs.iter().any(|attr| attr.path().is_ident("skip")) {
             continue;
         }
+
+        // Generate from_row conversion for each field
+        let conversion = generate_row_conversion(field_index, &field.ty);
+        from_row_fields.push(quote! {
+            #field_name: #conversion
+        });
+
+        field_index += 1;
 
         // check primary key label
         let is_primary_key = field
@@ -56,16 +65,28 @@ pub fn derive_entry(input: TokenStream) -> TokenStream {
             primary_key_field = Some(field_name.clone());
         }
 
-        // check for foreign key: #[foreign_key(table = "anime", column = "id")]
         let foreign_key_info = field
             .attrs
             .iter()
             .find(|attr| attr.path().is_ident("foreign_key"))
             .and_then(parse_foreign_key_attr);
 
+        let is_autoincrement = field
+            .attrs
+            .iter()
+            .any(|attr| attr.path().is_ident("autoincrement"));
+
         // generate schema
         let sql_type = rust_type_to_sql(&field.ty);
-        let pk_constraint = if is_primary_key { " PRIMARY KEY" } else { "" };
+        let pk_constraint = if is_primary_key {
+            if is_autoincrement {
+                " PRIMARY KEY AUTOINCREMENT"
+            } else {
+                " PRIMARY KEY"
+            }
+        } else {
+            ""
+        };
         schema_parts.push(format!("{} {}{}", field_name_str, sql_type, pk_constraint));
 
         // Add foreign key constraint
@@ -77,7 +98,7 @@ pub fn derive_entry(input: TokenStream) -> TokenStream {
         }
 
         // generate bind_values entries
-        if !is_primary_key {
+        if !is_primary_key || !is_autoincrement {
             let conversion = generate_value_conversion(field_name, &field.ty);
             bind_fields.push(quote! {
                 (#field_name_str, #conversion)
@@ -114,59 +135,66 @@ pub fn derive_entry(input: TokenStream) -> TokenStream {
                     #(#bind_fields),*
                 ]
             }
+            fn from_row(row: &rusqlite::Row) -> Result<Self, rusqlite::Error> {
+                Ok(Self {
+                    #(#from_row_fields),*
+                })
+            }
         }
     };
 
     TokenStream::from(expanded)
 }
 
-// Parse the foreign_key attribute: #[foreign_key(table = "anime", column = "id")]
 fn parse_foreign_key_attr(attr: &syn::Attribute) -> Option<(String, String)> {
 
-    attr.parse_args::<syn::Meta>().ok().and_then(|meta| {
-        if let Meta::List(list) = meta {
-            let mut table = None;
-            let mut column = None;
+    attr.parse_args_with(|input: syn::parse::ParseStream| {
+        let mut table = None;
+        let mut column = None;
 
-            for token in list.tokens.clone().into_iter() {
-                // This is a simplified parser - you might need more robust parsing
-                let token_str = token.to_string();
-                if token_str.contains("table") {
-                    // Extract the table name
-                    if let Some(start) = token_str.find('"')
-                        && let Some(end) = token_str.rfind('"')
-                    {
-                        table = Some(token_str[start + 1..end].to_string());
-                    }
-                } else if token_str.contains("column") {
-                    // Extract the column name
-                    if let Some(start) = token_str.find('"')
-                        && let Some(end) = token_str.rfind('"')
-                    {
-                        column = Some(token_str[start + 1..end].to_string());
-                    }
-                }
+        while !input.is_empty() {
+            let key: syn::Ident = input.parse()?;
+            let _: syn::Token![=] = input.parse()?;
+            let value: syn::LitStr = input.parse()?;
+
+            match key.to_string().as_str() {
+                "table" => table = Some(value.value()),
+                "column" => column = Some(value.value()),
+                _ => {}
             }
 
-            match (table, column) {
-                (Some(t), Some(c)) => Some((t, c)),
-                _ => None,
+            if !input.is_empty() {
+                let _: syn::Token![,] = input.parse()?;
             }
-        } else {
-            None
         }
+
+        Ok((table, column))
+    })
+    .ok()
+    .and_then(|(t, c)| match (t, c) {
+        (Some(table), Some(column)) => Some((table, column)),
+        _ => None,
     })
 }
 
 fn generate_value_conversion(field_name: &syn::Ident, ty: &Type) -> proc_macro2::TokenStream {
-    if is_simple_type(ty) {
+    if is_unsigned_int_type(ty) {
+        quote! {
+            rusqlite::types::Value::from(self.#field_name as i64)
+        }
+    } else if is_simple_type(ty) {
         quote! {
             rusqlite::types::Value::from(self.#field_name.clone())
         }
     } else if is_option_type(ty) {
         let inner_ty = extract_option_inner_type(ty);
         if let Some(inner) = inner_ty {
-            if is_simple_inner_type(inner) {
+            if is_unsigned_int_type(inner) {
+                quote! {
+                    self.#field_name.as_ref().map(|v| rusqlite::types::Value::from(*v as i64))
+                        .unwrap_or(rusqlite::types::Value::Null)
+                }
+            } else if is_simple_type(inner) {
                 quote! {
                     self.#field_name.as_ref().map(|v| rusqlite::types::Value::from(v.clone()))
                         .unwrap_or(rusqlite::types::Value::Null)
@@ -194,19 +222,19 @@ fn is_simple_type(ty: &Type) -> bool {
         let type_name = type_path.path.segments.last().unwrap().ident.to_string();
         matches!(
             type_name.as_str(),
-            "i32" | "i64" | "f32" | "f64" | "String" | "bool"
+            "i8" | "i16" | "i32" | "i64" | "u8" | "u16" | "u32" | "u64" | "isize" | "usize" | "f32" | "f64" | "String" | "bool"| "str"
         )
     } else {
         false
     }
 }
 
-fn is_simple_inner_type(ty: &Type) -> bool {
+fn is_unsigned_int_type(ty: &Type) -> bool {
     if let Type::Path(type_path) = ty {
         let type_name = type_path.path.segments.last().unwrap().ident.to_string();
         matches!(
             type_name.as_str(),
-            "i32" | "i64" | "f32" | "f64" | "String" | "bool" | "str"
+            "u8" | "u16" | "u32" | "u64" | "usize"
         )
     } else {
         false
@@ -238,14 +266,48 @@ fn rust_type_to_sql(ty: &Type) -> &'static str {
     if let Type::Path(type_path) = ty {
         let type_name = type_path.path.segments.last().unwrap().ident.to_string();
         match type_name.as_str() {
-            "i32" | "i64" | "u32" | "u64" | "isize" | "usize" => "INTEGER",
+            "i8" | "i16" | "i32" | "i64" | "u8" | "u16" | "u32" | "u64" | "isize" | "usize" => "INTEGER",
             "f32" | "f64" => "REAL",
             "String" | "str" => "TEXT",
             "bool" => "INTEGER",
-            "Vec" | "Option" => "TEXT",
+            "Option" => {
+                // For Option types, check the inner type
+                if let Some(inner) = extract_option_inner_type(ty) {
+                    rust_type_to_sql(inner)
+                } else {
+                    "TEXT"
+                }
+            }
+            "Vec" => "TEXT",
             _ => "TEXT",
         }
     } else {
         "TEXT"
+    }
+}
+
+fn generate_row_conversion(index: usize, ty: &Type) -> proc_macro2::TokenStream {
+    if is_option_type(ty) {
+        let inner_ty = extract_option_inner_type(ty);
+        if let Some(inner) = inner_ty {
+            if is_simple_type(inner) {
+                quote! { row.get(#index)? }
+            } else {
+                // For complex types stored as JSON
+                quote! {
+                    row.get::<_, Option<String>>(#index)?
+                        .and_then(|s| serde_json::from_str(&s).ok())
+                }
+            }
+        } else {
+            quote! { None }
+        }
+    } else if is_simple_type(ty) {
+        quote! { row.get(#index)? }
+    } else {
+        // For complex types stored as JSON
+        quote! {
+            serde_json::from_str(&row.get::<_, String>(#index)?).unwrap()
+        }
     }
 }

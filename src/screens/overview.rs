@@ -9,7 +9,9 @@ use super::{BackgroundUpdate, ExtraInfo, Screen};
 use crate::app::{Action, Event};
 use crate::config::Config;
 use crate::config::navigation::NavDirection;
-use crate::mal::models::anime::AnimeId;
+use crate::mal::models::WatchHistory;
+use crate::mal::models::anime::{Anime, AnimeId};
+use crate::send_error;
 use crate::utils::functionStreaming::StreamableRunner;
 use crate::utils::imageManager::ImageManager;
 use crossterm::event::KeyEvent;
@@ -271,7 +273,7 @@ impl Screen for OverviewScreen {
         Some(thread::spawn(move || {
             let anime_generator = StreamableRunner::new().stop_at(1);
 
-            let mut cached_ids: Vec<AnimeId> = Vec::new();
+            let mut anime_ids: Vec<AnimeId> = Vec::new();
 
             if let Ok(file) = OpenOptions::new().read(true).open(log_file) {
                 // then we fetch the animes data from the mal api (this is just the users list as
@@ -279,11 +281,11 @@ impl Screen for OverviewScreen {
                 // this information will just be handled by the app and the store, and will not be
                 // retrieved in this local apply_update
 
-                // this is the users list of animes
+                // this is the users list of animes (no user = no animes)
                 for animes in anime_generator
                     .run(|offset, limit| info.mal_client.get_anime_list(None, offset, limit))
                 {
-                    cached_ids.extend(animes.iter().map(|a| a.id));
+                    anime_ids.extend(animes.iter().map(|a| a.id));
                     let update = BackgroundUpdate::new(id.clone()).set("animes", animes);
                     info.app_sx.send(Event::BackgroundNotice(update)).ok();
                 }
@@ -320,7 +322,7 @@ impl Screen for OverviewScreen {
                     );
 
                     // save each individual anime id to the set
-                    if !cached_ids.contains(&anime_id) {
+                    if !anime_ids.contains(&anime_id) {
                         // if the anime is not in the users list, skip it cus they removed it
                         continue;
                     }
@@ -334,6 +336,30 @@ impl Screen for OverviewScreen {
                 if already_loaded {
                     return;
                 }
+            }
+
+            //TODO: fetch form db here after filefetch keep file fetch for backward compatibility
+
+            if let Ok(animes) = info.local_db.get::<Anime>(None) {
+                anime_ids.extend(animes.iter().map(|a| a.id));
+                let update = BackgroundUpdate::new(id.clone()).set("animes", animes);
+                info.app_sx.send(Event::BackgroundNotice(update)).ok();
+            }
+
+            if let Ok(history) = info.local_db.get::<WatchHistory>(None) {
+                let mut animes = IndexSet::new();
+                for entry in history.iter().rev() {
+                    if !anime_ids.contains(&entry.anime_id) {
+                        // if the anime is not in the users list, skip it cus they removed it
+                        continue;
+                    }
+                    animes.insert(entry.anime_id);
+                }
+
+                let animes: Vec<AnimeId> = animes.into_iter().collect();
+                let update = BackgroundUpdate::new(id.clone()).set("WatchHistory", animes);
+                sender.send(Event::BackgroundNotice(update)).ok();
+
             }
 
             // this is the suggested animes

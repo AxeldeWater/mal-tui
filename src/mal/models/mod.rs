@@ -10,9 +10,10 @@ pub fn na() -> String{
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Entry)]
-#[table_name = "watch_history"]
+#[table_name("watch_history")]
 pub struct WatchHistory {
     #[primary_key]
+    #[autoincrement]
     pub id: usize,
 
     #[foreign_key(table = "anime", column = "id")]

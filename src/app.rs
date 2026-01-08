@@ -29,6 +29,7 @@ pub struct ExtraInfo {
     pub app_sx: mpsc::Sender<Event>,
     pub mal_client: Arc<MalClient>,
     pub anime_store: Store<Anime>,
+    pub local_db: DatabaseManager,
 }
 
 // these are retured when a screen handles an input
@@ -110,7 +111,6 @@ pub struct App {
     terminal: DefaultTerminal,
     shared_info: ExtraInfo,
     anime_player: player::AnimePlayer,
-    db_manager: DatabaseManager,
 
     sx: mpsc::Sender<Event>,
     rx: mpsc::Receiver<Event>,
@@ -134,6 +134,7 @@ impl App {
             app_sx: sx.clone(),
             mal_client: mal_client.clone(),
             anime_store: Store::new(),
+            local_db: db_manager,
         };
 
         App {
@@ -143,7 +144,6 @@ impl App {
             current_info: None,
             shared_info: universal_info,
             is_running: true,
-            db_manager,
             terminal,
 
             rx,
@@ -201,14 +201,13 @@ impl App {
         Ok(())
     }
 
+    // TODO: make offline allow updating watched episodes and such
     fn log_watched_info(&self, anime: &Anime, details: player::PlayResult) {
         let now: DateTime<Local> = Local::now();
-        let timestamp = now.format("%Y-%m-%d %H:%M:%S");
-
         let history = WatchHistory {
             id: 0,
             anime_id: anime.id,
-            timestamp: timestamp.to_string(),
+            timestamp: now.format("%Y-%m-%d %H:%M:%S").to_string(),
             episode: details.episode as i32,
             current_time: details.current_time,
             total_time: details.total_time,
@@ -216,10 +215,10 @@ impl App {
             is_completed: details.is_completed,
         };
 
-        self.db_manager.create_table::<Anime>().ok();
-        self.db_manager.create_table::<WatchHistory>().ok();
-        self.db_manager.insert(anime.clone()).ok();
-        self.db_manager.insert(history).ok();
+        self.shared_info.local_db.create_table::<Anime>().ok();
+        self.shared_info.local_db.create_table::<WatchHistory>().ok();
+        self.shared_info.local_db.upsert(anime.clone()).ok();
+        self.shared_info.local_db.upsert(history).ok();
     }
 
     fn play_anime(&mut self, anime_id: AnimeId, episode: u32) -> Option<()> {
