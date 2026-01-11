@@ -1,6 +1,7 @@
 use crate::app::{Action, Event, ExtraInfo};
 use crate::mal::MalClient;
 use crate::mal::models::anime::{Anime, AnimeId};
+use crate::screens::widgets::sync;
 use std::collections::HashMap;
 use ratatui::layout::Layout;
 use std::thread::JoinHandle;
@@ -171,7 +172,7 @@ pub struct ScreenManager {
     screen_storage: HashMap<String, Box<dyn Screen>>,
     backgrounds: Vec<JoinHandle<()>>,
     passable_info: ExtraInfo,
-    syncing_popup: popup::SyncPopup,
+    syncing_popup: sync::SyncPopup,
 }
 
 #[allow(dead_code)]
@@ -191,8 +192,8 @@ impl ScreenManager {
             current_screen: Box::new(launch::LaunchScreen::new(passable_info.clone())),
             screen_storage: HashMap::new(),
             backgrounds: Vec::new(),
+            syncing_popup: sync::SyncPopup::new(passable_info.clone()),
             passable_info,
-            syncing_popup: popup::SyncPopup::new(),
         }
     }
 
@@ -209,6 +210,7 @@ impl ScreenManager {
             self.navbar.render(frame, nav_bar_area);
         }
         self.overlay.render(frame);
+        self.syncing_popup.render(frame);
         self.error_overlay.render(frame);
     }
 
@@ -246,6 +248,10 @@ impl ScreenManager {
                     return self.error_overlay.handle_keyboard(key_event);
                 }
 
+                if self.syncing_popup.is_open() {
+                    return self.syncing_popup.handle_keyboard(key_event);
+                }
+
                 if self.overlay.is_open() {
                     return self.overlay.handle_keyboard(key_event);
                 }
@@ -264,6 +270,10 @@ impl ScreenManager {
             crossterm::event::Event::Mouse(mouse_event) => {
                 if self.error_overlay.is_open() {
                     return self.error_overlay.handle_mouse(mouse_event);
+                }
+
+                if self.syncing_popup.is_open() {
+                    return self.syncing_popup.handle_mouse(mouse_event);
                 }
 
                 if self.overlay.is_open() {

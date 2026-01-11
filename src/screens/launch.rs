@@ -52,7 +52,8 @@ impl LaunchScreen {
                     Some(Action::SwitchScreen(LOGIN))
                 }
             }
-            2 => Some(Action::Quit),
+            // 2 => Some(Action::Quit),
+            2 => Some(Action::SwitchScreen(LAUNCH)),
             _ => None,
         }
     }
@@ -148,6 +149,10 @@ impl Screen for LaunchScreen {
     }
 
     fn background(&mut self) -> Option<JoinHandle<()>> {
+
+        if !MalClient::user_is_logged_in() {
+            return None;
+        }
 
         let info = self.app_info.clone();
         let id = self.get_name();

@@ -268,7 +268,10 @@ fn main() {
     rouille::start_server("0.0.0.0:8000", move |request| {
         router!(request,
             (GET) (/) => {
-                rouille::Response::text("hello")
+                match fs::read_to_string("static/index.html") {
+                    Ok(content) => rouille::Response::html(content),
+                    Err(_) => rouille::Response::text("Failed to load index page").with_status_code(500),
+                }
             },
 
 

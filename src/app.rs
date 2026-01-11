@@ -41,6 +41,10 @@ pub enum Action {
     ShowOverlay(AnimeId),
     NavbarSelect(bool),
     ShowError(String),
+    SyncAnime(Anime),
+    DiscardAnime(Anime),
+    Syncall(Vec<Anime>),
+    Discardall(Vec<Anime>),
     Quit,
 }
 
@@ -318,6 +322,19 @@ impl App {
                 Action::ShowError(message) => {
                     self.screen_manager.show_error(message);
                 }
+                Action::SyncAnime(anime) => {
+                    // handled in background threads
+                }
+                Action::DiscardAnime(anime) => {
+                    // handled in background threads
+                }
+                Action::Syncall(animes) => {
+                    // handled in background threads
+                }
+                Action::Discardall(animes) => {
+                    // handled in background threads
+                }
+
                 Action::Quit => {
                     self.is_running = false;
                 }
