@@ -130,7 +130,7 @@ impl SeasonsScreen {
         id: String,
     ) {
         let anime_batches = StreamableRunner::new()
-            .change_batch_size_at(500, 1)
+            .change_batch_size_at(1, 500)
             .stop_early();
 
         for batch in anime_batches

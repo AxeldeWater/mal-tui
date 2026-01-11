@@ -316,6 +316,9 @@ impl MalClient {
         if !MalClient::user_is_logged_in() {
             return None;
         }
+        if !Self::user_is_logged_in() {
+            return None;
+        }
         self.get_anime_list_by_user("@me".to_string(), status, offset, limit)
     }
 

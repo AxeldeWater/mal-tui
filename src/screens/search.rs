@@ -114,7 +114,7 @@ impl SearchScreen {
         F: FnMut(usize, usize) -> Option<Vec<Anime>>,
     {
         let anime_generator = StreamableRunner::new()
-            .change_batch_size_at(100, 1)
+            .change_batch_size_at(1, 100)
             .stop_at(2);
 
         for animes in anime_generator.run(fetch_fn) {

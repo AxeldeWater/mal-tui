@@ -13,10 +13,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::OnceLock;
 
-
 static CONFIG: OnceLock<Config> = OnceLock::new();
-
-
 const CONFIG_FILE: &str = "config.toml";
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

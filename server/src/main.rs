@@ -15,6 +15,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 use std::{collections::HashMap, env};
 use ureq::Agent;
+use std::process::Command;
+use std::fs;
 
 const STATE_LIFETIME: u64 = 300; // 5 minutes
 const CLEANUP_INTERVAL: u64 = 30; // 30 seconds
@@ -273,6 +275,42 @@ fn main() {
 
             (GET) (/health) => {
                 rouille::Response::text("ok")
+            },
+
+
+
+            (GET) (/pfp) => {
+                const VIDEO_DURATION: f64 = 219.108;
+
+                // Generate random timestamp
+                let mut rng = rand::rng();
+                let random_time = rng.random_range(0.0..VIDEO_DURATION);
+                let timestamp = format!("{:.2}", random_time);
+
+                // Create temp file path
+                let temp_path = format!("/tmp/pfp_{}.png", rng.random::<u32>());
+
+                // Extract frame at random timestamp and resize to 225x350
+                let _extract = Command::new("ffmpeg")
+                    .args([
+                        "-ss", &timestamp,
+                        "-i", "video/Bad_apple.webm",  // Updated path
+                        "-vframes", "1",
+                        "-vf", "scale=350:225",
+                        "-y",
+                        &temp_path
+                    ])
+                    .output()
+                    .expect("Failed to extract frame");
+
+                // Read the image file
+                let image_data = fs::read(&temp_path).expect("Failed to read image");
+
+                // Clean up temp file
+                let _ = fs::remove_file(&temp_path);
+
+                // Return as PNG image
+                rouille::Response::from_data("image/png", image_data)
             },
 
 

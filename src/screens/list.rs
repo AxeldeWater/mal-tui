@@ -5,6 +5,7 @@ use std::thread::JoinHandle;
 use crate::app::Event;
 use crate::config::Config;
 use crate::config::navigation::NavDirection;
+use crate::mal::MalClient;
 use crate::mal::models::anime::{Anime, AnimeId};
 use crate::utils::functionStreaming::StreamableRunner;
 use crate::utils::imageManager::ImageManager;
@@ -251,7 +252,7 @@ impl ListScreen {
 
 impl Screen for ListScreen {
     add_screen_caching!();
-    check_for_account!();
+    // check_for_account!();
 
     // draws the screen
     fn draw(&mut self, frame: &mut Frame) {
@@ -306,7 +307,7 @@ impl Screen for ListScreen {
             top.x + top.width - side.width.div_ceil(2) - info_area.width / 2,
             info_area.y,
             info_area.width,
-            info_area.height.max(self.dropdowns.len() as u16 * 3),
+            (self.dropdowns.len() as u16 * 3).min(area.height - info_area.y - 2),
         );
 
         let [info_area_left, info_area_right] = Layout::default()
@@ -602,12 +603,29 @@ impl Screen for ListScreen {
         self.bg_sx = Some(sx);
         ImageManager::init_with_threads(&self.image_manager, info.app_sx.clone());
         Some(std::thread::spawn(move || {
+            /////////////////////////////////////
+            ////////  Stratup  process  /////////
+            /////////////////////////////////////
             let mut cached_filter = Option::<Filters>::None;
             let mut cached_search = String::new();
 
+            // Fetch anime from local db
+            ///////////////////////////////////////
+            if !MalClient::user_is_logged_in() {
+                let local_animes = info.local_db.get::<Anime>(None).unwrap_or_default();
+                let anime_ids = local_animes.iter().map(|a| a.id).collect::<Vec<_>>();
+                let update = BackgroundUpdate::new(id.clone())
+                    .set("animes", local_animes)
+                    .set("anime_ids", anime_ids)
+                    .set("fetching", false);
+                info.app_sx.send(Event::BackgroundNotice(update)).ok();
+            }
+
+            // Fetch anime series from api
+            ///////////////////////////////////////
             let anime_generator = StreamableRunner::new()
-                // .with_batch_size(1000)
-                .change_batch_size_at(1000, 1)
+                .with_batch_size(20)
+                .change_batch_size_at(1, 1000)
                 .stop_early()
                 .stop_at(20);
 
@@ -618,14 +636,18 @@ impl Screen for ListScreen {
                 let update = BackgroundUpdate::new(id.clone())
                     .set("animes", animes)
                     .set("anime_ids", anime_ids)
-                    .set("fetching", false)
+                    .set("fetching", false) // updates "fetching" to false once first batch of anime is recieved
                     .set("extend", true);
                 info.app_sx.send(Event::BackgroundNotice(update)).ok();
             }
 
+            // Then set the "startup" to false to signal all requests are done
             let update = BackgroundUpdate::new(id.clone()).set("startup", false);
             info.app_sx.send(Event::BackgroundNotice(update)).ok();
 
+            /////////////////////////////////////
+            //////// Continuous running /////////
+            /////////////////////////////////////
             while let Ok(_event) = rx.recv() {
                 match _event {
                     LocalEvent::Dropdown(animes, filters) => {
