@@ -129,7 +129,7 @@ impl App {
             .to_string();
         let db_manager =
             DatabaseManager::new(db_path).expect("Failed to initialize database manager");
-        let mal_client = Arc::new(MalClient::new());
+        let mal_client = Arc::new(MalClient::new(db_manager.clone()));
         let universal_info = ExtraInfo {
             app_sx: sx.clone(),
             mal_client: mal_client.clone(),
@@ -201,7 +201,6 @@ impl App {
         Ok(())
     }
 
-    // TODO: make offline allow updating watched episodes and such
     fn log_watched_info(&self, anime: &Anime, details: player::PlayResult) {
         let now: DateTime<Local> = Local::now();
         let history = WatchHistory {
@@ -214,7 +213,6 @@ impl App {
             percentage: details.percentage,
             is_completed: details.is_completed,
         };
-
         self.shared_info.local_db.create_table::<Anime>().ok();
         self.shared_info.local_db.create_table::<WatchHistory>().ok();
         self.shared_info.local_db.upsert(anime.clone()).ok();
@@ -272,7 +270,7 @@ impl App {
                         .update_user_list_async((*updated).clone());
                 }
                 self.screen_manager.refresh();
-                self.log_watched_info(&anime, episode_details);
+                self.log_watched_info(&updated, episode_details);
             }
             Err(e) => {
                 self.screen_manager.show_error(e.to_string());

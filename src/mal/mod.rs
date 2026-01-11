@@ -6,6 +6,7 @@ use crate::config::Config;
 use crate::mal::network::{Fetchable, Identifier, send_request_expect_text};
 use crate::{params, send_error};
 use chrono::{Datelike, Local};
+use database::{DatabaseManager, Entryable};
 use models::anime::{Anime, AnimeId, FavoriteAnime, fields};
 use models::user::User;
 use network::Update;
@@ -28,14 +29,16 @@ pub struct MalClient {
     client_id: Arc<RwLock<Option<String>>>,
     identity: Arc<RwLock<Option<Identity>>>,
     re: Regex,
+    local_db: DatabaseManager, // uses this when user isnt signed in
 }
 
 impl MalClient {
-    pub fn new() -> Self {
+    pub fn new(local_db: DatabaseManager) -> Self {
         let client = Self {
             client_id: Arc::new(RwLock::new(None)),
             identity: Arc::new(RwLock::new(None)),
             re: Regex::new(r"\(([0-9,]+)/([0-9,]+|Unknown)\)").unwrap(),
+            local_db,
         };
 
         client.login_from_file();
@@ -196,12 +199,10 @@ impl MalClient {
             vec![],
             vec![],
             None,
-        ).ok()?;
+        )
+        .ok()?;
 
-        self.client_id
-            .write()
-            .unwrap()
-            .replace(client_id.clone());
+        self.client_id.write().unwrap().replace(client_id.clone());
         Some(client_id)
     }
 
@@ -239,20 +240,26 @@ impl MalClient {
                 "limit" => limit,
                 "offset" => offset,
                 "sort" => "anime_num_list_users",
-                "nsfw" => "true",
+                "nsfw" => &Config::global()
+                    .allow_nsfw
+                    .unwrap_or(false)
             ],
         )
     }
 
     pub fn get_suggested_anime(&self, offset: usize, limit: usize) -> Option<Vec<Anime>> {
-        if !MalClient::user_is_logged_in(){ return None; }
+        if !MalClient::user_is_logged_in() {
+            return None;
+        }
         self.send_request::<Anime>(
             format!("{}/anime/suggestions", BASE_URL),
             params![
                 "fields" => fields::ALL.join(","),
                 "limit" => limit,
                 "offset" => offset,
-                "nsfw" => "true",
+                "nsfw" => &Config::global()
+                    .allow_nsfw
+                    .unwrap_or(false)
             ],
         )
     }
@@ -265,7 +272,10 @@ impl MalClient {
             "fields" => fields::ALL.join(","),
             "limit" => limit,
             "offset" => offset,
-            "nsfw" => "true",
+            "nsfw" => &Config::global()
+                .allow_nsfw
+                .unwrap_or(false)
+
             ],
         )
     }
@@ -278,7 +288,9 @@ impl MalClient {
                 "fields" => fields::ALL.join(","),
                 "limit" => limit,
                 "offset" => offset,
-                "nsfw" => "true",
+                "nsfw" => &Config::global()
+                    .allow_nsfw
+                    .unwrap_or(false)
             ],
         )
     }
@@ -288,7 +300,9 @@ impl MalClient {
             format!("{}/users/@me", BASE_URL),
             params![
                 "fields" => "anime_statistics",
-                "nsfw" => "true",
+                "nsfw" => &Config::global()
+                    .allow_nsfw
+                    .unwrap_or(false)
             ],
         )
     }
@@ -299,7 +313,9 @@ impl MalClient {
         offset: usize,
         limit: usize,
     ) -> Option<Vec<Anime>> {
-        if !MalClient::user_is_logged_in(){ return None; }
+        if !MalClient::user_is_logged_in() {
+            return None;
+        }
         self.get_anime_list_by_user("@me".to_string(), status, offset, limit)
     }
 
@@ -315,7 +331,9 @@ impl MalClient {
             "limit" => limit,
             "offset" => offset,
             "sort" => "list_updated_at",
-            "nsfw" => "true",
+            "nsfw" => &Config::global()
+                .allow_nsfw
+                .unwrap_or(false)
         ];
 
         if let Some(status) = status {
@@ -335,10 +353,22 @@ impl MalClient {
         )
     }
 
-    pub fn update_user_list<T: Update>(
+    pub fn update_user_list<T: Update + Entryable>(
         &self,
         element: T,
     ) -> Result<(usize, T::Response), Box<dyn std::error::Error + 'static>> {
+        if !Self::user_is_logged_in() {
+            let updated = match self.local_db.upsert(element) {
+                Ok(u) => u,
+                Err(e) => {
+                    send_error!("Failed to update local database: {}", e);
+                    return Err("local db error".into());
+                }
+            };
+            let response = updated.to_offline_response();
+            return Ok((updated.get_id(), response));
+        }
+
         let token = self
             .identity
             .read()
@@ -363,7 +393,7 @@ impl MalClient {
         )
     }
 
-    pub fn update_user_list_async<T: Update + Send + 'static>(
+    pub fn update_user_list_async<T: Update + Send + 'static + Entryable>(
         &self,
         element: T,
     ) -> tokio::task::JoinHandle<

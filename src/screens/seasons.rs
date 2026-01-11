@@ -6,6 +6,7 @@ use crate::add_screen_caching;
 use crate::config::Config;
 use crate::config::navigation::NavDirection;
 use crate::mal::models::anime::AnimeId;
+use crate::utils::stringManipulation::format_date;
 use crate::{
     app::{Action, Event},
     mal::{MalClient, models::anime::Anime},
@@ -17,6 +18,7 @@ use crate::{
 };
 use crossterm::event::KeyEvent;
 use ratatui::layout::{Alignment, Margin, Position, Rect};
+use ratatui::text::Text;
 use ratatui::widgets::{Padding, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap};
 use ratatui::{
     Frame,
@@ -376,7 +378,7 @@ impl Screen for SeasonsScreen {
             ("Type:", anime.media_type),
             ("Episodes:", anime.num_episodes.to_string()),
             ("Status:", anime.status),
-            ("Aired:", anime.start_date),
+            ("Aired:", format_date(&anime.start_date)),
             ("Genres:", genres_string),
             ("Duration:", anime.average_episode_duration.to_string()),
             ("Rating:", anime.rating),
@@ -385,8 +387,8 @@ impl Screen for SeasonsScreen {
             ("Popularity:", anime.popularity.to_string()),
             ("Studios:", studios_string),
             ("Season:", anime.start_season.to_string()),
-            ("Created at:", anime.created_at),
-            ("Updated at:", anime.updated_at),
+            ("Created at:", format_date(&anime.created_at)),
+            ("Updated at:", format_date(&anime.updated_at)),
         ];
 
         fn create_details_text(details: &[(&str, String)]) -> String {
@@ -440,13 +442,24 @@ impl Screen for SeasonsScreen {
                 Block::default()
                     .padding(Padding::new(1, 1, 0, 0))
                     .borders(Borders::TOP)
-                    .border_style(Style::default().fg(Config::global().theme.primary))
+                    .border_style(Style::default().fg(if self.focus == Focus::AnimeDetails {
+                        Config::global().theme.highlight
+                    } else {
+                        Config::global().theme.primary
+                    }))
                     .padding(Padding::new(1, 2, 1, 1)),
             );
 
+        let scrollbar_color = if self.focus == Focus::AnimeDetails {
+            Config::global().theme.highlight
+        } else {
+            Config::global().theme.text
+        };
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
             .begin_symbol(Some("↑"))
-            .end_symbol(Some("↓"));
+            .end_symbol(Some("↓"))
+            .style(Style::default().fg(scrollbar_color))
+            .thumb_style(Style::default().fg(scrollbar_color));
         let mut scrollbar_state = ScrollbarState::new(20).position(self.detail_scroll_y as usize);
 
         frame.render_widget(desc_title, bottom);

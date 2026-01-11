@@ -32,6 +32,8 @@ pub struct Config {
 
     #[serde(default = "Theme::default")]
     pub theme: Theme,
+
+    pub allow_nsfw: Option<bool>,
 }
 
 impl Config {
@@ -51,6 +53,7 @@ impl Config {
             network: Network::default(),
             player: Player::default(),
             theme: Theme::default(),
+            allow_nsfw: Some(false),
         }
     }
 

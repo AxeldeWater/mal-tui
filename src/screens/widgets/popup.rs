@@ -26,6 +26,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Margin, Position, Rect},
     style::{Color, Style, Stylize},
     symbols::{self, border},
+    text::Text,
     widgets::{
         Block, Borders, Clear, Padding, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
         Wrap,
@@ -79,7 +80,7 @@ impl AnimePopup {
     pub fn new(info: ExtraInfo) -> Self {
         let buttons = vec![
             "Play".to_string(),
-            "nothing yet".to_string(),
+            "Nothing yet".to_string(),
             "Play from start".to_string(),
             "Open".to_string(),
         ];
@@ -120,21 +121,13 @@ impl AnimePopup {
                 match event {
                     // send any userchoice to the mal backend
                     LocalEvent::UserChoice(index, anime) => {
-                        match info.mal_client.update_user_list(anime) {
-                            Ok(result) => {
-                                let update = BackgroundUpdate::new("popup")
-                                    .set("success", (index, result.clone()));
-                                info.app_sx.send(Event::BackgroundNotice(update)).ok();
-                            }
-                            Err(e) => {
-                                info.app_sx
-                                    .send(Event::BackgroundNotice(
-                                        BackgroundUpdate::new("popup")
-                                            .set("failure", (index, e.to_string())),
-                                    ))
-                                    .ok();
-                            }
-                        }
+                        let update = match info.mal_client.update_user_list(anime) {
+                            Ok(result) => BackgroundUpdate::new("popup")
+                                .set("success", (index, result.clone())),
+                            Err(e) => BackgroundUpdate::new("popup")
+                                .set("failure", (index, e.to_string())),
+                        };
+                        info.app_sx.send(Event::BackgroundNotice(update)).ok();
                     }
 
                     // update the number of released episodes
@@ -618,7 +611,15 @@ impl AnimePopup {
         // add the buttons
         self.button_nav
             .construct(&self.buttons, buttons_area, |button, area, highlighted| {
-                let button_paragraph = Paragraph::new(button.to_string())
+                let button_text = Text::styled(
+                    button.to_string(),
+                    Style::default().fg(if highlighted && self.focus == Focus::PlayButtons {
+                        Config::global().theme.highlight
+                    } else {
+                        Config::global().theme.text
+                    }),
+                );
+                let button_paragraph = Paragraph::new(button_text)
                     .block(
                         Block::default()
                             .borders(Borders::ALL)
@@ -629,7 +630,7 @@ impl AnimePopup {
                         if highlighted && self.focus == Focus::PlayButtons {
                             Config::global().theme.highlight
                         } else {
-                            Config::global().theme.secondary
+                            Config::global().theme.primary
                         },
                     ));
                 frame.render_widget(button_paragraph, area);
@@ -1512,7 +1513,18 @@ impl SelectionPopup {
             self.displaying_format.replace("{}", &option)
         };
 
-        let filter = Paragraph::new(option)
+        let option_with_color = Text::styled(
+            option,
+            Style::default().fg(if highlighted {
+                Config::global().theme.highlight
+            } else if self.color == Config::global().theme.primary {
+                Config::global().theme.text
+            } else {
+                self.color
+            }),
+        );
+
+        let filter = Paragraph::new(option_with_color)
             .block(
                 Block::default()
                     .borders(Borders::ALL)

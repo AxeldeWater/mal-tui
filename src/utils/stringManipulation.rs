@@ -88,6 +88,29 @@ pub fn format_date(date_str: &str) -> String {
     date_str.to_string()
 }
 
+pub fn format_date_short(date_str: &str) -> String {
+    // Try parsing as RFC3339 (2025-07-06T15:08:00Z)
+    if let Ok(dt) = DateTime::parse_from_rfc3339(date_str) {
+        return dt.format("%b %d, %Y at %I:%M %p").to_string();
+    }
+    // Try parsing date with time but no timezone (2025-07-06T15:08)
+    if let Ok(dt) = DateTime::parse_from_str(date_str, "%Y-%m-%dT%H:%M") {
+        return dt.format("%b %d, %Y at %I:%M %p").to_string();
+    }
+    // Try parsing just date (2025-07-06)
+    if let Ok(date) = NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
+        return date.format("%b %d, %Y").to_string();
+    }
+    // Try parsing other date formats
+    if let Ok(date) = NaiveDate::parse_from_str(date_str, "%Y/%m/%d") {
+        return date.format("%b %d, %Y").to_string();
+    }
+    if let Ok(date) = NaiveDate::parse_from_str(date_str, "%m/%d/%Y") {
+        return date.format("%b %d, %Y").to_string();
+    }
+    date_str.to_string()
+}
+
 pub fn levenshtein_distance(s1: &str, s2: &str) -> usize {
     let len1 = s1.chars().count();
     let len2 = s2.chars().count();
@@ -122,10 +145,10 @@ pub fn levenshtein_distance(s1: &str, s2: &str) -> usize {
 
             matrix[i][j] = std::cmp::min(
                 std::cmp::min(
-                    matrix[i - 1][j] + 1,      // deletion
-                    matrix[i][j - 1] + 1       // insertion
+                    matrix[i - 1][j] + 1, // deletion
+                    matrix[i][j - 1] + 1, // insertion
                 ),
-                matrix[i - 1][j - 1] + cost    // substitution
+                matrix[i - 1][j - 1] + cost, // substitution
             );
         }
     }

@@ -76,7 +76,7 @@ impl DatabaseManager {
     }
 
     // upsert (insert or replace if exists)
-    pub fn upsert<T: Entryable>(&self, obj: T) -> Result<(), Error> {
+    pub fn upsert<T: Entryable>(&self, obj: T) -> Result<T, Error> {
         let connection = self.connection.lock().unwrap();
         let table_name = T::table_name();
         let bindings = obj.bind_values();
@@ -91,7 +91,7 @@ impl DatabaseManager {
             placeholders.join(", ")
         );
         connection.execute(&query, rusqlite::params_from_iter(values))?;
-        Ok(())
+        Ok(obj)
     }
 
     // update

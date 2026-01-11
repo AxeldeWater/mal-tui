@@ -338,8 +338,8 @@ impl Screen for OverviewScreen {
                 }
             }
 
-            //TODO: fetch form db here after filefetch keep file fetch for backward compatibility
 
+            // TODO: foreign key one fetch not two
             if let Ok(animes) = info.local_db.get::<Anime>(None) {
                 anime_ids.extend(animes.iter().map(|a| a.id));
                 let update = BackgroundUpdate::new(id.clone()).set("animes", animes);

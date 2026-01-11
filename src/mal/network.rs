@@ -345,6 +345,7 @@ pub trait Update: Sized {
     fn get_body(&self) -> Option<String>;
     fn get_id(&self) -> usize;
     fn get_belonging_list(&self) -> String;
+    fn to_offline_response(&self) -> Self::Response;
 
     fn update(
         &self,
