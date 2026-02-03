@@ -60,8 +60,8 @@ impl LaunchScreen {
                     Some(Action::SwitchScreen(LOGIN))
                 }
             }
-            // 2 => Some(Action::Quit),
-            2 => Some(Action::SwitchScreen(LAUNCH)),
+            2 => Some(Action::Quit),
+            // 2 => Some(Action::SwitchScreen(LAUNCH)),
             _ => None,
         }
     }

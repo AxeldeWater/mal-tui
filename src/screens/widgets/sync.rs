@@ -1,15 +1,13 @@
 use ratatui::{
     prelude::*,
-    widgets::{Block, Borders, Clear, Padding, Paragraph, Wrap},
+    widgets::{Block, Borders, Clear, Gauge, Padding, Paragraph, Wrap},
 };
-use std::{
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 // Assuming these imports exist based on your provided code
 use crate::{
     app::{Action, ExtraInfo},
     config::{Config, navigation::NavDirection},
-    mal::models::anime::{Anime, AnimeId},
+    mal::models::anime::Anime,
     screens::widgets::navigatable::Navigatable,
     utils::imageManager::ImageManager,
 };
@@ -22,7 +20,7 @@ enum FocusedElement {
     BackButton,
 }
 
-type SyncOrDelete = (bool, AnimeId);
+type SyncOrDelete = (bool, Anime);
 
 #[derive(Clone)]
 pub struct SyncPopup {
@@ -30,6 +28,7 @@ pub struct SyncPopup {
     syncing: bool,
     animes_to_sync: Vec<Anime>,
     to_be_processed: Vec<SyncOrDelete>,
+    finished_processing: Vec<SyncOrDelete>,
     current_anime: usize,
     info: ExtraInfo,
     focus: FocusedElement,
@@ -39,6 +38,10 @@ pub struct SyncPopup {
     nav: Navigatable,
     image_manager: Arc<Mutex<ImageManager>>,
     all_selected: bool,
+
+    // Button areas for mouse handling
+    back_btn_area: Option<Rect>,
+    batch_btn_area: Option<Rect>,
 }
 
 impl SyncPopup {
@@ -58,12 +61,15 @@ impl SyncPopup {
             current_anime: 0,
             animes_to_sync: Vec::new(),
             to_be_processed: Vec::new(),
+            finished_processing: Vec::new(),
             nav: Navigatable::new((1, buttons.len() as u16)), // 2 columns, 1 row
             buttons,
             image_manager,
             info,
             all_selected: false,
             focus: FocusedElement::SyncButtons,
+            back_btn_area: None,
+            batch_btn_area: None,
         }
     }
 
@@ -88,19 +94,26 @@ impl SyncPopup {
         }
     }
 
+    pub fn finished_syncing(&mut self, anime: Anime) {
+        self.finished_processing.push((true, anime));
+    }
+    pub fn finished_deleting(&mut self, anime: Anime) {
+        self.finished_processing.push((false, anime));
+    }
+
     pub fn next(&mut self) {
         self.current_anime += 1;
     }
-    pub fn back(&mut self){
+    pub fn back(&mut self) {
         self.current_anime = self.current_anime.saturating_sub(1);
         self.to_be_processed.pop();
     }
 
-    pub fn done(&mut self){
-        self.current_anime = self.animes_to_sync.len() - 1;
+    pub fn done(&mut self) {
+        self.current_anime = self.animes_to_sync.len();
     }
 
-    pub fn clear(&mut self){
+    pub fn clear(&mut self) {
         self.animes_to_sync.clear();
         self.syncing = false;
     }
@@ -128,17 +141,59 @@ impl SyncPopup {
         self.animes_to_sync.get(self.current_anime)
     }
 
+    fn handle_sync_or_delete(&mut self, anime: Anime) -> Option<Action> {
+        if self.all_selected {
+            match self.nav.get_selected_index() {
+                0 => {
+                    for anime in &self.animes_to_sync[self.current_anime..] {
+                        self.to_be_processed.push((true, anime.clone()));
+                    }
+                }
+                1 => {
+                    for anime in &self.animes_to_sync[self.current_anime..] {
+                        self.to_be_processed.push((false, anime.clone()));
+                    }
+                }
+                _ => {}
+            }
+
+            self.done();
+            return Some(Action::SyncAnimes(self.to_be_processed.clone()));
+        } else {
+            match self.nav.get_selected_index() {
+                0 => {
+                    self.to_be_processed.push((true, anime));
+                }
+                1 => {
+                    self.to_be_processed.push((false, anime));
+                }
+                _ => {}
+            }
+
+            self.next();
+
+            if self.to_be_processed.len() == self.animes_to_sync.len() {
+                return Some(Action::SyncAnimes(self.to_be_processed.clone()));
+            }
+        }
+
+        None
+    }
+
     pub fn handle_keyboard(&mut self, key_event: KeyEvent) -> Option<Action> {
         if !self.toggled {
             return None;
         }
 
-        // If showing summary, any key closes
+        // If showing summary, any key closes (only when sync is complete)
         if self.current_anime().is_none() {
-            self.close();
-            self.current_anime = 0;
-            self.to_be_processed.clear();
-            self.animes_to_sync.clear();
+            if self.finished_processing.len() >= self.to_be_processed.len() {
+                self.close();
+                self.current_anime = 0;
+                self.to_be_processed.clear();
+                self.finished_processing.clear();
+                self.animes_to_sync.clear();
+            }
             return None;
         }
 
@@ -148,7 +203,9 @@ impl SyncPopup {
             FocusedElement::BackButton => {
                 match nav_config.get_direction(&key_event.code) {
                     NavDirection::Up => self.focus = FocusedElement::BatchButton,
-                    NavDirection::Down | NavDirection::Left | NavDirection::Right => self.focus = FocusedElement::SyncButtons,
+                    NavDirection::Down | NavDirection::Left | NavDirection::Right => {
+                        self.focus = FocusedElement::SyncButtons
+                    }
                     _ => {}
                 }
 
@@ -183,9 +240,9 @@ impl SyncPopup {
                     }
                     NavDirection::Right => self.nav.move_right(),
                     NavDirection::Up => {
-                        if self.current_anime > 0{
+                        if self.current_anime > 0 {
                             self.focus = FocusedElement::BackButton;
-                        } else{
+                        } else {
                             self.focus = FocusedElement::BatchButton;
                         }
                     }
@@ -196,39 +253,7 @@ impl SyncPopup {
                 if nav_config.is_select(&key_event.code)
                     && let Some(anime) = self.current_anime().cloned()
                 {
-                    if self.all_selected {
-                        match self.nav.get_selected_index() {
-                            0 => {
-                                for anime in &self.animes_to_sync[self.current_anime..] {
-                                    self.to_be_processed.push((true, anime.id));
-                                }
-                                self.done();
-                                return None;
-                            }
-                            1 => {
-                                for anime in &self.animes_to_sync[self.current_anime..] {
-                                    self.to_be_processed.push((false, anime.id));
-                                }
-                                self.done();
-                                return None;
-                            }
-                            _ => {}
-                        }
-                    }
-
-                    match self.nav.get_selected_index() {
-                        0 => {
-                            self.to_be_processed.push((true, anime.id));
-                            self.next();
-                            return None;
-                        }
-                        1 => {
-                            self.to_be_processed.push((false, anime.id));
-                            self.next();
-                            return None;
-                        }
-                        _ => {}
-                    }
+                    return self.handle_sync_or_delete(anime);
                 }
 
                 // Close
@@ -238,9 +263,11 @@ impl SyncPopup {
             }
         }
 
-        // self.animes_to_sync.remove(0);
-
         None
+    }
+
+    fn is_in_rect(rect: Rect, x: u16, y: u16) -> bool {
+        x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height
     }
 
     pub fn handle_mouse(&mut self, mouse_event: MouseEvent) -> Option<Action> {
@@ -249,44 +276,43 @@ impl SyncPopup {
         }
 
         let is_click = matches!(mouse_event.kind, MouseEventKind::Down(_));
+        let (x, y) = (mouse_event.column, mouse_event.row);
 
-        // Handle buttons
-        if self.nav.get_hovered_index(mouse_event).is_some()
-            && is_click
-            && let Some(anime) = self.current_anime().cloned()
-        {
-            if self.all_selected {
-                match self.nav.get_selected_index() {
-                    0 => {
-                        for anime in &self.animes_to_sync[self.current_anime..] {
-                            self.to_be_processed.push((true, anime.id));
-                        }
-                        self.done();
-                        return None;
-                    }
-                    1 => {
-                        for anime in &self.animes_to_sync[self.current_anime..] {
-                            self.to_be_processed.push((false, anime.id));
-                        }
-                        self.done();
-                        return None;
-                    }
-                    _ => {}
+        // Copy areas to avoid borrow issues
+        let back_area = self.back_btn_area;
+        let batch_area = self.batch_btn_area;
+
+        // Handle hover - update focus based on mouse position
+        let over_back = back_area.is_some_and(|area| Self::is_in_rect(area, x, y));
+        let over_batch = batch_area.is_some_and(|area| Self::is_in_rect(area, x, y));
+        let over_sync = self.nav.get_hovered_index(mouse_event).is_some();
+
+        if over_back {
+            self.focus = FocusedElement::BackButton;
+        } else if over_batch {
+            self.focus = FocusedElement::BatchButton;
+        } else if over_sync {
+            self.focus = FocusedElement::SyncButtons;
+        }
+
+        // Handle clicks
+        if is_click {
+            if over_back {
+                self.back();
+                if self.current_anime == 0 {
+                    self.focus = FocusedElement::SyncButtons;
                 }
+                return None;
             }
 
-            match self.nav.get_selected_index() {
-                0 => {
-                    self.to_be_processed.push((true, anime.id));
-                    self.next();
-                    return None;
-                }
-                1 => {
-                    self.to_be_processed.push((false, anime.id));
-                    self.next();
-                    return None;
-                }
-                _ => {}
+            if over_batch {
+                self.all_selected = !self.all_selected;
+                self.change_button_lables();
+                return None;
+            }
+
+            if over_sync && let Some(anime) = self.current_anime().cloned() {
+                return self.handle_sync_or_delete(anime);
             }
         }
 
@@ -294,11 +320,38 @@ impl SyncPopup {
     }
 
     fn render_summary(&self, frame: &mut Frame, area: Rect) {
-        let synced = self.to_be_processed.iter().filter(|(sync, _)| *sync).count();
-        let removed = self.to_be_processed.iter().filter(|(sync, _)| !*sync).count();
+        let to_be_synced = self
+            .to_be_processed
+            .iter()
+            .filter(|(sync, _)| *sync)
+            .count();
+        let to_be_removed = self
+            .to_be_processed
+            .iter()
+            .filter(|(sync, _)| !*sync)
+            .count();
+        let already_synced = self
+            .finished_processing
+            .iter()
+            .filter(|(sync, _)| *sync)
+            .count();
+        let already_removed = self
+            .finished_processing
+            .iter()
+            .filter(|(sync, _)| *sync)
+            .count();
+
+        let total = self.to_be_processed.len();
+        let finished = self.finished_processing.len();
+        let progress = if total > 0 {
+            finished as f64 / total as f64
+        } else {
+            1.0
+        };
+        let is_complete = finished >= total;
 
         let width = std::cmp::min(area.width * 50 / 100, 50);
-        let height = 10;
+        let height = 12;
 
         let popup_area = Rect::new(
             area.x + (area.width.saturating_sub(width)) / 2,
@@ -309,10 +362,15 @@ impl SyncPopup {
 
         frame.render_widget(Clear, popup_area);
 
+        let title = if is_complete {
+            " Sync Complete "
+        } else {
+            " Syncing... "
+        };
         let block = Block::default()
             .borders(Borders::ALL)
             .border_set(ratatui::symbols::border::ROUNDED)
-            .title(" Sync Complete ")
+            .title(title)
             .title_alignment(Alignment::Center)
             .style(Style::default().fg(Config::global().theme.secondary));
 
@@ -320,28 +378,61 @@ impl SyncPopup {
 
         let inner = block.inner(popup_area);
 
+        // Split into progress bar and text areas
+        let [progress_area, text_area] = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(2), Constraint::Min(0)])
+            .areas(inner);
+
+        // Render progress bar
+        let progress_bar = Gauge::default()
+            .block(Block::default().padding(Padding::horizontal(1)))
+            .gauge_style(Style::default().fg(Config::global().theme.highlight))
+            .ratio(progress)
+            .label(format!("{}/{}", finished, total));
+
+        frame.render_widget(progress_bar, progress_area);
+
+        let close_text = if is_complete {
+            "Press any key to close"
+        } else {
+            "Processing..."
+        };
+
         let summary_text = vec![
             Line::from(""),
             Line::from(vec![
-                Span::styled("Synced to MAL: ", Style::default().fg(Config::global().theme.highlight)),
-                Span::styled(synced.to_string(), Style::default().fg(Config::global().theme.completed).bold()),
+                Span::styled(
+                    "Synced to MAL: ",
+                    Style::default().fg(Config::global().theme.highlight),
+                ),
+                Span::styled(
+                    format!("{}/{}", already_synced, to_be_synced),
+                    Style::default().fg(Config::global().theme.completed).bold(),
+                ),
             ]),
             Line::from(vec![
-                Span::styled("Removed local: ", Style::default().fg(Config::global().theme.highlight)),
-                Span::styled(removed.to_string(), Style::default().fg(Config::global().theme.error).bold()),
+                Span::styled(
+                    "Removed local: ",
+                    Style::default().fg(Config::global().theme.highlight),
+                ),
+                Span::styled(
+                    format!("{}/{}", already_removed, to_be_removed),
+                    Style::default().fg(Config::global().theme.error).bold(),
+                ),
             ]),
             Line::from(""),
             Line::from(Span::styled(
-                "Press any key to close",
+                close_text,
                 Style::default().fg(Config::global().theme.secondary),
             )),
         ];
 
         let paragraph = Paragraph::new(summary_text)
             .alignment(Alignment::Center)
-            .block(Block::default().padding(Padding::new(1, 1, 1, 1)));
+            .block(Block::default().padding(Padding::new(1, 1, 0, 0)));
 
-        frame.render_widget(paragraph, inner);
+        frame.render_widget(paragraph, text_area);
     }
 
     pub fn render(&mut self, frame: &mut Frame) {
@@ -352,7 +443,7 @@ impl SyncPopup {
         let area = frame.area();
 
         // If no animes left to sync, show summary
-        let anime = match self.current_anime() {
+        let anime = match self.current_anime().cloned() {
             Some(a) => a,
             None => {
                 self.render_summary(frame, area);
@@ -381,7 +472,11 @@ impl SyncPopup {
         let block = Block::default()
             .borders(Borders::ALL)
             .border_set(ratatui::symbols::border::ROUNDED)
-            .title(format!(" Sync Conflict ({}/{}) ", self.to_be_processed.len(), self.animes_to_sync.len()))
+            .title(format!(
+                " Sync Conflict ({}/{}) ",
+                self.to_be_processed.len(),
+                self.animes_to_sync.len()
+            ))
             .title_alignment(Alignment::Center)
             .style(Style::default().fg(Config::global().theme.secondary));
 
@@ -409,33 +504,33 @@ impl SyncPopup {
         // Split left area into image and back button
         let [image_area, back_btn_area] = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Min(3),
-                Constraint::Length(3),
-            ])
+            .constraints([Constraint::Min(3), Constraint::Length(3)])
             .areas(left_area);
 
         // 1. Render Image
         // Adjust image area for padding
         let img_render_area = image_area.inner(Margin::new(1, 1));
-        ImageManager::render_image(&self.image_manager, anime, frame, img_render_area, true);
+        ImageManager::render_image(&self.image_manager, &anime, frame, img_render_area, true);
 
         // Render Back button (only if not on first anime)
         if self.current_anime > 0 {
             let back_btn_area = back_btn_area.inner(Margin::new(1, 0));
-            let back_btn = Paragraph::new("< Back")
-                .alignment(Alignment::Center)
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .border_set(ratatui::symbols::border::ROUNDED)
-                        .style(Style::default().fg(if self.focus == FocusedElement::BackButton {
+            self.back_btn_area = Some(back_btn_area);
+            let back_btn = Paragraph::new("< Back").alignment(Alignment::Center).block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_set(ratatui::symbols::border::ROUNDED)
+                    .style(
+                        Style::default().fg(if self.focus == FocusedElement::BackButton {
                             Config::global().theme.highlight
                         } else {
                             Config::global().theme.primary
-                        })),
-                );
+                        }),
+                    ),
+            );
             frame.render_widget(back_btn, back_btn_area);
+        } else {
+            self.back_btn_area = None;
         }
 
         // 2. Render Text Info
@@ -452,7 +547,11 @@ impl SyncPopup {
 
         let [title_area, all_btn_area, _] = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Fill(1), Constraint::Length(10), Constraint::Length(1)])
+            .constraints([
+                Constraint::Fill(1),
+                Constraint::Length(10),
+                Constraint::Length(1),
+            ])
             .areas(title_area);
 
         let [conflict_location, text_area] = Layout::default()
@@ -613,19 +712,24 @@ impl SyncPopup {
         // 3. Render Buttons
         // We want the buttons centered or spread out.
         // Let's use the Navigatable construct logic you already have.
-        let all_btn = if self.all_selected { "plural" } else { "single" };
-        let all_btn = Paragraph::new(all_btn)
-            .alignment(Alignment::Center)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_set(ratatui::symbols::border::ROUNDED)
-                    .style(Style::default().fg(if self.focus == FocusedElement::BatchButton {
+        self.batch_btn_area = Some(all_btn_area);
+        let all_btn = if self.all_selected {
+            "plural"
+        } else {
+            "single"
+        };
+        let all_btn = Paragraph::new(all_btn).alignment(Alignment::Center).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_set(ratatui::symbols::border::ROUNDED)
+                .style(
+                    Style::default().fg(if self.focus == FocusedElement::BatchButton {
                         Config::global().theme.highlight
                     } else {
                         Config::global().theme.primary
-                    })),
-            );
+                    }),
+                ),
+        );
         frame.render_widget(all_btn, all_btn_area);
 
         let buttons_rect = Rect::new(

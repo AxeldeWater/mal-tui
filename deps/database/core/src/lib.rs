@@ -119,7 +119,7 @@ impl DatabaseManager {
     }
 
     // delete
-    pub fn delete<T: Entryable>(&self, obj: T) -> Result<(), Error> {
+    pub fn delete<T: Entryable>(&self, obj: &T) -> Result<(), Error> {
         let connection = self.connection.lock().unwrap();
         let table_name = T::table_name();
         let condition = format!("id = {}", obj.p_key());

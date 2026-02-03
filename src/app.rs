@@ -42,10 +42,7 @@ pub enum Action {
     ShowOverlay(AnimeId),
     NavbarSelect(bool),
     ShowError(String),
-    SyncAnime(Anime),
-    DiscardAnime(Anime),
-    Syncall(Vec<Anime>),
-    Discardall(Vec<Anime>),
+    SyncAnimes(Vec<(bool, Anime)>),
     Quit,
 }
 
@@ -59,7 +56,7 @@ pub enum CurrentInfo {
 // these are sent over the channel at any time
 #[allow(dead_code)]
 pub enum Event {
-    SyncStatus(bool, AnimeId),
+    SyncStatus(bool, Box<Anime>),
     Input(crossterm::event::Event),
     KeyPress(crossterm::event::KeyEvent),
     MouseClick(crossterm::event::MouseEvent),
@@ -202,6 +199,15 @@ impl App {
                     Event::ShowError(message) => {
                         self.screen_manager.show_error(message);
                     }
+                    Event::SyncStatus(success, anime ) => {
+                        if success {
+                            self.screen_manager.syncing_popup.finished_syncing(*anime);
+                        }
+                        else {
+                            self.screen_manager.show_error(format!("Failed to sync {}", anime.title));
+                        }
+
+                    }
                     _ => {}
                 }
             }
@@ -325,52 +331,23 @@ impl App {
                 Action::ShowError(message) => {
                     self.screen_manager.show_error(message);
                 }
-                Action::SyncAnime(anime) => {
-
+                Action::SyncAnimes(animes) => {
                     let tx = self.sx.clone();
-                    let anime_id = anime.id;
-                    let handle = self.shared_info.mal_client.update_user_list_async(anime);
+                    let client = self.mal_client.clone();
+                    let local_db = self.shared_info.local_db.clone();
 
-                    // update syncing status when finished
                     tokio::spawn(async move {
-                        let success = handle.await.map(|r| r.is_ok()).unwrap_or(false);
-                        let _ = tx.send(Event::SyncStatus(success, anime_id));
-                    });
-                }
-                Action::DiscardAnime(anime) => {
-                    // handled in background threads
-                    match self.shared_info.local_db.delete(anime){
-                        Ok(()) => {},
-                        Err(e) => {
-                            self.screen_manager.show_error(format!("failed to delete local anime: {}", e));
-                        }
-                    }
-                    self.screen_manager.syncing_popup.next();
-                }
-                Action::Syncall(animes) => {
-                    // handled in background threads
-                    for anime in animes{
-                        match self.shared_info
-                            .mal_client
-                            .update_user_list(anime){
-                            Ok(_) => {},
-                            Err(e) => {
-                                self.screen_manager.show_error(format!("failed to sync local anime: {}", e));
+                        for (sync, anime) in animes {
+                            if sync {
+                                let result = client.update_user_list_async(anime.clone()).await;
+                                let success = result.map(|r| r.is_ok()).unwrap_or(false);
+                                let _ = tx.send(Event::SyncStatus(success, Box::new(anime)));
+                            } else {
+                                let success = local_db.delete(&anime).is_ok();
+                                let _ = tx.send(Event::SyncStatus(success, Box::new(anime)));
                             }
                         }
-                        self.screen_manager.syncing_popup.next();
-                    }
-                    self.screen_manager.syncing_popup.clear();
-                }
-                Action::Discardall(_animes) => {
-                    // handled in background threads
-                    match self.shared_info.local_db.clear::<Anime>() {
-                        Ok(()) => {},
-                        Err(e) => {
-                            self.screen_manager.show_error(format!("failed to delete local anime: {}", e));
-                        }
-                    }
-                    self.screen_manager.syncing_popup.clear();
+                    });
                 }
 
                 Action::Quit => {
