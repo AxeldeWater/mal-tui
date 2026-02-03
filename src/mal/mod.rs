@@ -361,16 +361,8 @@ impl MalClient {
         element: T,
     ) -> Result<(usize, T::Response), Box<dyn std::error::Error + 'static>> {
         if !Self::user_is_logged_in() {
-            let updated = match self.local_db.upsert(element) {
-                Ok(u) => u,
-                Err(e) => {
-                    send_error!("Failed to update local database: {}", e);
-                    return Err("local db error".into());
-                }
-            };
-            let response = updated.to_offline_response();
-            return Ok((updated.get_id(), response));
-        }
+            return element.update_local(&self.local_db);
+        };
 
         let token = self
             .identity

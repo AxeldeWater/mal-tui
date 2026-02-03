@@ -137,6 +137,7 @@
             overflow-x: hidden;
             font-weight: bold;
             text-shadow: 0 0 10px rgba(189, 147, 249, 0.4);
+            scrollbar-width: none;
         }
 
         h1 {
@@ -212,12 +213,11 @@
             overflow-x: auto;
             padding-bottom: 10px;
             margin-bottom: 25px;
-            scrollbar-width: thin;
-            scrollbar-color: #44475a #151521;
+            scrollbar-width: none; /* Firefox */
+            -ms-overflow-style: none; /* IE/Edge */
         }
 
-        .tui-row::-webkit-scrollbar { height: 6px; }
-        .tui-row::-webkit-scrollbar-thumb { background: #44475a; border-radius: 3px; }
+        .tui-row::-webkit-scrollbar { display: none; } /* Chrome/Safari/Opera */
 
         .tui-card {
             min-width: 260px;
@@ -425,7 +425,6 @@
             </div>
 
             <div class="terminal-content">
-                
                 <div class="ascii-art">
    __  __    _    _           _____ _   _ ___ 
   |  \/  |  / \  | |         |_   _| | | |_ _|
@@ -439,13 +438,13 @@
                 </h1>
 
                 <div class="description">
-                    A CLI tool to browse, track, and play anime from MyAnimeList. 
+                    A CLI/TUI tool to browse, track, and play anime from MyAnimeList. 
                     Built in Rust for blazing speed and zero-bloat. Syncs your lists automatically.
                 </div>
 
                 <div class="install-box">
                     <span style="color: #6272a4;">$</span>
-                    <span class="install-cmd">cargo install mal-cli</span>
+                    <span class="install-cmd">yay -S mal</span>
                     <button class="copy-btn" onclick="copyCommand(this)">Copy</button>
                 </div>
 
@@ -453,7 +452,7 @@
                 <div class="mock-ui">
                     <!-- Section 1: Recently Watched -->
                     <div class="tui-section-header">Recently Watched</div>
-                    
+ 
                     <div class="tui-row">
                         <!-- Card 1 -->
                         <div class="tui-card">

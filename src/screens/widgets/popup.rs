@@ -5,6 +5,7 @@ use std::{
     },
     thread::JoinHandle,
 };
+use chrono::Utc;
 
 use crate::{
     app::{Action, Event},

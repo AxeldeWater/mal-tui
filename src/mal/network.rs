@@ -1,6 +1,9 @@
+use crate::send_error;
+
 use super::models::anime::{AnimeResponse, FavoriteResponse};
 use super::models::user::User;
 use cached::proc_macro::cached;
+use database::DatabaseManager;
 use std::fmt::Debug;
 use std::io::Read;
 use std::sync::OnceLock;
@@ -336,7 +339,7 @@ pub trait Fetchable: Sized {
     fn from_response(response: Self::Response) -> Self::Output;
 }
 
-pub trait Update: Sized {
+pub trait Update: Sized + database::Entryable{
     type Response: serde::de::DeserializeOwned + Debug + Send;
 
     fn get_method(&self) -> &'static str;
@@ -346,6 +349,22 @@ pub trait Update: Sized {
     fn get_id(&self) -> usize;
     fn get_belonging_list(&self) -> String;
     fn to_offline_response(&self) -> Self::Response;
+
+    fn update_local(
+        self,
+        database: &DatabaseManager,
+    ) -> Result<(usize, Self::Response), Box<dyn std::error::Error>>
+    {
+        let updated = match database.upsert(self) {
+            Ok(u) => u,
+            Err(e) => {
+                send_error!("Failed to update local database: {}", e);
+                return Err("local db error".into());
+            }
+        };
+        let response = updated.to_offline_response();
+        Ok((updated.get_id(), response))
+    }
 
     fn update(
         &self,

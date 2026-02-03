@@ -18,7 +18,6 @@ use crate::{
 };
 use crossterm::event::KeyEvent;
 use ratatui::layout::{Alignment, Margin, Position, Rect};
-use ratatui::text::Text;
 use ratatui::widgets::{Padding, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap};
 use ratatui::{
     Frame,

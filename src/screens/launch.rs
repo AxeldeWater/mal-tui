@@ -1,14 +1,22 @@
-use std::{collections::{HashMap, HashSet}, thread::JoinHandle};
+use std::{
+    collections::{HashMap, HashSet},
+    thread::JoinHandle,
+};
 
 use super::{
     ExtraInfo, Screen,
     screens::*,
     widgets::{button::Button, navigatable::Navigatable},
 };
-use crate::{app::Event, mal::{MalClient, models::anime::Anime}, screens::BackgroundUpdate, utils::functionStreaming::StreamableRunner};
 use crate::{
     app::Action,
     config::{Config, navigation::NavDirection},
+};
+use crate::{
+    app::Event,
+    mal::{MalClient, models::anime::Anime},
+    screens::BackgroundUpdate,
+    utils::functionStreaming::StreamableRunner,
 };
 use crossterm::event::{KeyEvent, MouseEvent};
 use ratatui::{
@@ -149,10 +157,9 @@ impl Screen for LaunchScreen {
     }
 
     fn background(&mut self) -> Option<JoinHandle<()>> {
-
-        if !MalClient::user_is_logged_in() {
-            return None;
-        }
+        // if !MalClient::user_is_logged_in() {
+        //     return None;
+        // }
 
         let info = self.app_info.clone();
         let id = self.get_name();
@@ -161,14 +168,10 @@ impl Screen for LaunchScreen {
             ////////////////////////////////////////
             //////// Sync local db with MAL ////////
             ////////////////////////////////////////
-            let mut animes_to_sync: Vec<Anime> = vec![];
             let local_animes = info.local_db.get::<Anime>(None).unwrap_or_default();
-            let local_lookup: HashMap<_, _> = local_animes
-                .iter()
-                .map(|a| (a.id, a))
-                .collect();
 
-            let mut checked_ids = HashSet::new();
+            let mut animes_to_sync: HashMap<_, _> =
+                local_animes.into_iter().map(|a| (a.id, a)).collect();
 
             let anime_generator = StreamableRunner::new()
                 .with_batch_size(1000)
@@ -179,33 +182,28 @@ impl Screen for LaunchScreen {
                 .run(|offset, limit| info.mal_client.get_anime_list(None, offset, limit))
             {
                 for anime in animes.iter() {
-                    checked_ids.insert(anime.id);
+                    let Some(local_anime) = animes_to_sync.get(&anime.id) else{
+                        continue;
+                    };
 
-                    match local_lookup.get(&anime.id) {
-                        Some(&local_anime) => {
-                            if anime.my_list_status.status != local_anime.my_list_status.status
-                                || anime.my_list_status.score != local_anime.my_list_status.score
-                                || anime.my_list_status.num_episodes_watched != local_anime.my_list_status.num_episodes_watched
-                            {
-                                animes_to_sync.push(local_anime.clone());
-                            }
-                        }
-                        None => animes_to_sync.push(anime.clone()),
+                    if anime.my_list_status.status == local_anime.my_list_status.status
+                        || anime.my_list_status.score == local_anime.my_list_status.score
+                        || anime.my_list_status.num_episodes_watched
+                            == local_anime.my_list_status.num_episodes_watched
+                    {
+                        animes_to_sync.remove(&anime.id);
                     }
                 }
-                let update = BackgroundUpdate::new(id.clone())
-                    .set("animes", animes);
+                let update = BackgroundUpdate::new(id.clone()).set("animes", animes);
                 info.app_sx.send(Event::BackgroundNotice(update)).ok();
             }
 
-            for local_anime in local_animes.iter() {
-                if !checked_ids.contains(&local_anime.id) {
-                    animes_to_sync.push(local_anime.clone());
-                }
-            }
+            let vec_animes = animes_to_sync
+                .values()
+                .cloned()
+                .collect::<Vec<Anime>>();
 
-            let update = BackgroundUpdate::new(id.clone())
-                .set("sync", animes_to_sync);
+            let update = BackgroundUpdate::new(id.clone()).set("sync", vec_animes);
             info.app_sx.send(Event::BackgroundNotice(update)).ok();
         }))
     }

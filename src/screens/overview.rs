@@ -11,7 +11,6 @@ use crate::config::Config;
 use crate::config::navigation::NavDirection;
 use crate::mal::models::WatchHistory;
 use crate::mal::models::anime::{Anime, AnimeId};
-use crate::send_error;
 use crate::utils::functionStreaming::StreamableRunner;
 use crate::utils::imageManager::ImageManager;
 use crossterm::event::KeyEvent;

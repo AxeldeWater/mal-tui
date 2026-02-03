@@ -13,6 +13,7 @@ use crate::player;
 use database::DatabaseManager;
 use chrono::DateTime;
 use chrono::Local;
+use chrono::Utc;
 use crossterm::event::DisableMouseCapture;
 use crossterm::event::EnableMouseCapture;
 use image::DynamicImage;
