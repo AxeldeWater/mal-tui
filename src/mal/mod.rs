@@ -23,6 +23,8 @@ const CLIENT_FOLDER: &str = ".mal";
 const CLIENT_FILE: &str = "client";
 const SECONDS_IN_A_DAY: u64 = 86400;
 
+type BoxedSendError = Box<dyn std::error::Error + Send + 'static>;
+
 //TODO: encrypt the tokens
 #[derive(Debug, Clone)]
 pub struct MalClient {
@@ -391,22 +393,15 @@ impl MalClient {
     pub fn update_user_list_async<T: Update + Send + 'static + Entryable>(
         &self,
         element: T,
-    ) -> tokio::task::JoinHandle<
-        Result<(usize, T::Response), Box<dyn std::error::Error + Send + 'static>>,
-    >
+    ) -> tokio::task::JoinHandle<Result<(usize, T::Response), BoxedSendError>>
     where
         T::Response: Send,
     {
         let client = self.clone();
         tokio::task::spawn_blocking(move || {
-            client.update_user_list(element).map_err(
-                |e| -> Box<dyn std::error::Error + Send + 'static> {
-                    Box::new(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("{}", e),
-                    ))
-                },
-            )
+            client.update_user_list(element).map_err(|e| -> BoxedSendError {
+                Box::new(std::io::Error::other(e.to_string()))
+            })
         })
     }
 

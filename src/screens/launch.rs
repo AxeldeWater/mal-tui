@@ -187,8 +187,8 @@ impl Screen for LaunchScreen {
                     };
 
                     if anime.my_list_status.status == local_anime.my_list_status.status
-                        || anime.my_list_status.score == local_anime.my_list_status.score
-                        || anime.my_list_status.num_episodes_watched
+                        && anime.my_list_status.score == local_anime.my_list_status.score
+                        && anime.my_list_status.num_episodes_watched
                             == local_anime.my_list_status.num_episodes_watched
                     {
                         animes_to_sync.remove(&anime.id);

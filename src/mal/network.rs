@@ -383,3 +383,7 @@ pub trait Update: Sized + database::Entryable{
         Ok((self.get_id(), update))
     }
 }
+
+pub trait Syncable: Sized + database::Entryable{
+
+}
