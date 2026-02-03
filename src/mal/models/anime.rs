@@ -13,6 +13,7 @@ use serde::Deserializer;
 use serde::Deserialize;
 use serde::Serialize;
 use std::fmt::{self};
+use chrono::Utc;
 
 // season limit (first season ever) : year: 1917 season: winter
 
@@ -782,6 +783,10 @@ impl Update for Anime {
             normalized.status = watch_status_from_api(normalized.status);
             DeleteOrUpdate::Updated(normalized)
         }
+    }
+
+    fn pre_update(&mut self) {
+        self.my_list_status.updated_at = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(); 
     }
 }
 

@@ -349,12 +349,14 @@ pub trait Update: Sized + database::Entryable{
     fn get_id(&self) -> usize;
     fn get_belonging_list(&self) -> String;
     fn to_offline_response(&self) -> Self::Response;
+    fn pre_update(&mut self);
 
     fn update_local(
-        self,
+        mut self,
         database: &DatabaseManager,
     ) -> Result<(usize, Self::Response), Box<dyn std::error::Error>>
     {
+        self.pre_update();
         let updated = match database.upsert(self) {
             Ok(u) => u,
             Err(e) => {

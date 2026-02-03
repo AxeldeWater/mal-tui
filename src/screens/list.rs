@@ -200,6 +200,10 @@ impl ListScreen {
                         .unwrap_or(std::cmp::Ordering::Equal)
                 });
             }
+            "by last updated" => {
+                animes.sort_by(|a, b| a.my_list_status.updated_at.cmp(&b.my_list_status.updated_at))
+            }
+
             _ => {}
         }
 

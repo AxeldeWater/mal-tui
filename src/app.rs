@@ -265,6 +265,7 @@ impl App {
                             } else {
                                 anime_to_update.my_list_status.status = "completed".into();
                             }
+                            anime_to_update.my_list_status.updated_at = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(); 
                         });
                 }
 

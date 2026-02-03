@@ -79,6 +79,9 @@ impl DatabaseManager {
     pub fn upsert<T: Entryable>(&self, obj: T) -> Result<T, Error> {
         let connection = self.connection.lock().unwrap();
         let table_name = T::table_name();
+        // create table if not exists
+        let schema = T::schema();
+        connection.execute(&format!("CREATE TABLE IF NOT EXISTS {} ({})", table_name, schema), [])?;
         let bindings = obj.bind_values();
         let (names, values): (Vec<_>, Vec<_>) = bindings.into_iter().unzip();
         let placeholders: Vec<String> = (1..=values.len())
