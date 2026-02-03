@@ -326,15 +326,35 @@ impl App {
                 }
                 Action::SyncAnime(anime) => {
                     // handled in background threads
+                    // match self.shared_info
+                    //     .mal_client
+                    //     .update_user_list(anime){
+                    //
+                    //
+                    // }
                 }
                 Action::DiscardAnime(anime) => {
                     // handled in background threads
+                    match self.shared_info.local_db.delete(anime){
+                        Ok(()) => {},
+                        Err(e) => {
+                            self.screen_manager.show_error(format!("failed to delete local anime: {}", e));
+                        }
+                    }
+                    self.screen_manager.syncing_popup.next();
                 }
                 Action::Syncall(animes) => {
                     // handled in background threads
                 }
-                Action::Discardall(animes) => {
+                Action::Discardall(_animes) => {
                     // handled in background threads
+                    match self.shared_info.local_db.clear::<Anime>() {
+                        Ok(()) => {},
+                        Err(e) => {
+                            self.screen_manager.show_error(format!("failed to delete local anime: {}", e));
+                        }
+                    }
+                    self.screen_manager.syncing_popup.clear();
                 }
 
                 Action::Quit => {

@@ -172,7 +172,7 @@ pub struct ScreenManager {
     screen_storage: HashMap<String, Box<dyn Screen>>,
     backgrounds: Vec<JoinHandle<()>>,
     passable_info: ExtraInfo,
-    syncing_popup: sync::SyncPopup,
+    pub syncing_popup: sync::SyncPopup,
 }
 
 #[allow(dead_code)]

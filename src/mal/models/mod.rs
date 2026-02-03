@@ -16,7 +16,7 @@ pub struct WatchHistory {
     #[autoincrement]
     pub id: usize,
 
-    #[foreign_key(table = "anime", column = "id")]
+    // #[foreign_key(table = "anime", column = "id", on_delete = "cascade")]
     pub anime_id: usize,
 
     pub timestamp: String,

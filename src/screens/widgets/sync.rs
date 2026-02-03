@@ -81,6 +81,13 @@ impl SyncPopup {
         }
     }
 
+    pub fn next(&mut self) {
+        self.animes_to_sync.remove(0);
+    }
+    pub fn clear(&mut self){
+        self.animes_to_sync.clear();
+    }
+
     pub fn is_open(&self) -> bool {
         self.toggled
     }
@@ -152,7 +159,7 @@ impl SyncPopup {
             }
         }
 
-        self.animes_to_sync.remove(0);
+        // self.animes_to_sync.remove(0);
 
         None
     }

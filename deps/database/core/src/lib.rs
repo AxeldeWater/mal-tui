@@ -131,4 +131,23 @@ impl DatabaseManager {
         connection.execute(&query, [])?;
         Ok(())
     }
+
+    // clear all rows from table
+    pub fn clear<T: Entryable>(&self) -> Result<(), Error> {
+        let connection = self.connection.lock().unwrap();
+        let table_name = T::table_name();
+        connection.execute(&format!("DELETE FROM {}", table_name), [])?;
+        Ok(())
+    }
+
+    // clear all rows, ignoring foreign key constraints
+    pub fn clear_force<T: Entryable>(&self) -> Result<(), Error> {
+        let connection = self.connection.lock().unwrap();
+        let table_name = T::table_name();
+        connection.execute("PRAGMA foreign_keys = OFF", [])?;
+        let result = connection.execute(&format!("DELETE FROM {}", table_name), []);
+        connection.execute("PRAGMA foreign_keys = ON", [])?;
+        result?;
+        Ok(())
+    }
 }

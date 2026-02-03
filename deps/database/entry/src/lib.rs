@@ -90,10 +90,13 @@ pub fn derive_entry(input: TokenStream) -> TokenStream {
         schema_parts.push(format!("{} {}{}", field_name_str, sql_type, pk_constraint));
 
         // Add foreign key constraint
-        if let Some((ref_table, ref_column)) = foreign_key_info {
+        if let Some((ref_table, ref_column, on_delete)) = foreign_key_info {
+            let on_delete_clause = on_delete
+                .map(|action| format!(" ON DELETE {}", action.to_uppercase()))
+                .unwrap_or_default();
             foreign_keys.push(format!(
-                "FOREIGN KEY ({}) REFERENCES {}({})",
-                field_name_str, ref_table, ref_column
+                "FOREIGN KEY ({}) REFERENCES {}({}){}",
+                field_name_str, ref_table, ref_column, on_delete_clause
             ));
         }
 
@@ -146,11 +149,11 @@ pub fn derive_entry(input: TokenStream) -> TokenStream {
     TokenStream::from(expanded)
 }
 
-fn parse_foreign_key_attr(attr: &syn::Attribute) -> Option<(String, String)> {
-
+fn parse_foreign_key_attr(attr: &syn::Attribute) -> Option<(String, String, Option<String>)> {
     attr.parse_args_with(|input: syn::parse::ParseStream| {
         let mut table = None;
         let mut column = None;
+        let mut on_delete = None;
 
         while !input.is_empty() {
             let key: syn::Ident = input.parse()?;
@@ -160,6 +163,7 @@ fn parse_foreign_key_attr(attr: &syn::Attribute) -> Option<(String, String)> {
             match key.to_string().as_str() {
                 "table" => table = Some(value.value()),
                 "column" => column = Some(value.value()),
+                "on_delete" => on_delete = Some(value.value()),
                 _ => {}
             }
 
@@ -168,11 +172,11 @@ fn parse_foreign_key_attr(attr: &syn::Attribute) -> Option<(String, String)> {
             }
         }
 
-        Ok((table, column))
+        Ok((table, column, on_delete))
     })
     .ok()
-    .and_then(|(t, c)| match (t, c) {
-        (Some(table), Some(column)) => Some((table, column)),
+    .and_then(|(t, c, d)| match (t, c) {
+        (Some(table), Some(column)) => Some((table, column, d)),
         _ => None,
     })
 }
