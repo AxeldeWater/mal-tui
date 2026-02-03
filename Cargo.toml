@@ -1,6 +1,6 @@
 [package]
 name = "mal-cli"
-version = "0.2.0"
+version = "1.0.1"
 edition = "2024"
 
 [dependencies]
@@ -26,3 +26,5 @@ regex = "1.11.1"
 indexmap = "2.10.0"
 toml = "0.9.7"
 shell-escape = "0.1.5"
+database = { path = "./deps/database" }
+rusqlite = "0.37.0"

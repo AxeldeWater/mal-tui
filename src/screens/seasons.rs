@@ -4,8 +4,9 @@ use super::widgets::popup::SeasonPopup;
 use super::{BackgroundUpdate, Screen};
 use crate::add_screen_caching;
 use crate::config::Config;
-use crate::mal::models::anime::AnimeId;
 use crate::config::navigation::NavDirection;
+use crate::mal::models::anime::AnimeId;
+use crate::utils::stringManipulation::format_date;
 use crate::{
     app::{Action, Event},
     mal::{MalClient, models::anime::Anime},
@@ -65,7 +66,7 @@ pub struct SeasonsScreen {
     navigatable: Navigatable,
 
     // render cache
-    details_area: Option<Rect>
+    details_area: Option<Rect>,
 }
 
 impl SeasonsScreen {
@@ -128,7 +129,7 @@ impl SeasonsScreen {
         id: String,
     ) {
         let anime_batches = StreamableRunner::new()
-            .change_batch_size_at(500, 1)
+            .change_batch_size_at(1, 500)
             .stop_early();
 
         for batch in anime_batches
@@ -152,10 +153,10 @@ impl Screen for SeasonsScreen {
 
     fn draw(&mut self, frame: &mut Frame) {
         let mut anime = Anime::empty();
-        if let Some(selected_anime) = self.navigatable.get_selected_item(&self.animes) {
-            if let Some(found_anime) = self.app_info.anime_store.get(selected_anime) {
-                anime = (*found_anime).clone();
-            }
+        if let Some(selected_anime) = self.navigatable.get_selected_item(&self.animes)
+            && let Some(found_anime) = self.app_info.anime_store.get(selected_anime)
+        {
+            anime = (*found_anime).clone();
         }
 
         let area = frame.area();
@@ -376,7 +377,7 @@ impl Screen for SeasonsScreen {
             ("Type:", anime.media_type),
             ("Episodes:", anime.num_episodes.to_string()),
             ("Status:", anime.status),
-            ("Aired:", anime.start_date),
+            ("Aired:", format_date(&anime.start_date)),
             ("Genres:", genres_string),
             ("Duration:", anime.average_episode_duration.to_string()),
             ("Rating:", anime.rating),
@@ -385,8 +386,8 @@ impl Screen for SeasonsScreen {
             ("Popularity:", anime.popularity.to_string()),
             ("Studios:", studios_string),
             ("Season:", anime.start_season.to_string()),
-            ("Created at:", anime.created_at),
-            ("Updated at:", anime.updated_at),
+            ("Created at:", format_date(&anime.created_at)),
+            ("Updated at:", format_date(&anime.updated_at)),
         ];
 
         fn create_details_text(details: &[(&str, String)]) -> String {
@@ -440,13 +441,24 @@ impl Screen for SeasonsScreen {
                 Block::default()
                     .padding(Padding::new(1, 1, 0, 0))
                     .borders(Borders::TOP)
-                    .border_style(Style::default().fg(Config::global().theme.primary))
+                    .border_style(Style::default().fg(if self.focus == Focus::AnimeDetails {
+                        Config::global().theme.highlight
+                    } else {
+                        Config::global().theme.primary
+                    }))
                     .padding(Padding::new(1, 2, 1, 1)),
             );
 
+        let scrollbar_color = if self.focus == Focus::AnimeDetails {
+            Config::global().theme.highlight
+        } else {
+            Config::global().theme.text
+        };
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
             .begin_symbol(Some("↑"))
-            .end_symbol(Some("↓"));
+            .end_symbol(Some("↓"))
+            .style(Style::default().fg(scrollbar_color))
+            .thumb_style(Style::default().fg(scrollbar_color));
         let mut scrollbar_state = ScrollbarState::new(20).position(self.detail_scroll_y as usize);
 
         frame.render_widget(desc_title, bottom);
@@ -464,7 +476,9 @@ impl Screen for SeasonsScreen {
     }
 
     fn handle_keyboard(&mut self, key_event: KeyEvent) -> Option<Action> {
-        let modifier = key_event.modifiers.contains(crossterm::event::KeyModifiers::CONTROL);
+        let modifier = key_event
+            .modifiers
+            .contains(crossterm::event::KeyModifiers::CONTROL);
         let nav = &Config::global().navigation;
 
         match self.focus {
@@ -476,7 +490,7 @@ impl Screen for SeasonsScreen {
             }
 
             Focus::AnimeList => {
-                if modifier { 
+                if modifier {
                     match nav.get_direction(&key_event.code) {
                         NavDirection::Up => {
                             self.focus = Focus::SeasonSelection;
@@ -486,7 +500,7 @@ impl Screen for SeasonsScreen {
                         }
                         _ => {}
                     }
-                    return None; 
+                    return None;
                 }
 
                 match nav.get_direction(&key_event.code) {
@@ -505,12 +519,11 @@ impl Screen for SeasonsScreen {
                     _ => {}
                 };
 
-                if nav.is_select(&key_event.code) {
-                    if let Some(id) = self.navigatable.get_selected_item(&self.animes) {
-                        if let Some(anime) = self.app_info.anime_store.get(id) {
-                            return Some(Action::ShowOverlay(anime.id));
-                        }
-                    }
+                if nav.is_select(&key_event.code)
+                    && let Some(id) = self.navigatable.get_selected_item(&self.animes)
+                    && let Some(anime) = self.app_info.anime_store.get(id)
+                {
+                    return Some(Action::ShowOverlay(anime.id));
                 }
 
                 self.detail_scroll_y = 0;
@@ -630,11 +643,11 @@ impl Screen for SeasonsScreen {
         }
 
         // also anime list
-        if self.navigatable.get_hovered_index(mouse_event).is_some() {
-            if let crossterm::event::MouseEventKind::Down(_) = mouse_event.kind {
-                let anime_id = self.navigatable.get_selected_item(&self.animes)?;
-                return Some(Action::ShowOverlay(*anime_id));
-            }
+        if self.navigatable.get_hovered_index(mouse_event).is_some()
+            && let crossterm::event::MouseEventKind::Down(_) = mouse_event.kind
+        {
+            let anime_id = self.navigatable.get_selected_item(&self.animes)?;
+            return Some(Action::ShowOverlay(*anime_id));
         }
 
         None

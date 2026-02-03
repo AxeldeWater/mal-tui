@@ -13,10 +13,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::OnceLock;
 
-
 static CONFIG: OnceLock<Config> = OnceLock::new();
-
-
 const CONFIG_FILE: &str = "config.toml";
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -32,6 +29,8 @@ pub struct Config {
 
     #[serde(default = "Theme::default")]
     pub theme: Theme,
+
+    pub allow_nsfw: Option<bool>,
 }
 
 impl Config {
@@ -51,6 +50,7 @@ impl Config {
             network: Network::default(),
             player: Player::default(),
             theme: Theme::default(),
+            allow_nsfw: Some(false),
         }
     }
 

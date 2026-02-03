@@ -1,39 +1,51 @@
+use crate::utils::imageManager::HasDisplayableImage; 
+use crate::utils::store::Storable;
+use crate::mal::network::fetch_favorited_anime;
+use crate::mal::network::fetch_anime;
+use crate::mal::network::Identifier;
+use crate::mal::network::Update;
+use crate::mal::Fetchable;
 use super::na;
-use crate::{
-    mal::{
-        network::{fetch_anime, fetch_favorited_anime, Update}, Fetchable
-    },
-    utils::{imageManager::HasDisplayableImage, store::Storable},
-};
-use serde::{Deserialize, Deserializer, Serialize};
+
+
+use database::*;
+use serde::Deserializer;
+use serde::Deserialize;
+use serde::Serialize;
 use std::fmt::{self};
+use chrono::Utc;
 
 // season limit (first season ever) : year: 1917 season: winter
 
 pub type AnimeId = <Anime as Storable>::Id;
 
-fn status<'de, D>(deserializer: D) -> Result<String, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let s = String::deserialize(deserializer)?;
-    let status = match s.as_str() {
+
+/// Converts anime airing status from API format to internal format
+pub fn anime_status_from_api(s: String) -> String {
+    match s.as_str() {
         "currently_airing" => "airing".to_string(),
         "finished_airing" => "finished".to_string(),
         "not_yet_aired" => "upcoming".to_string(),
         _ => s,
-    };
-    Ok(status)
+    }
 }
 
-pub fn correct_status(s: String) -> String {
+/// Converts user watch status from API format to internal format
+pub fn watch_status_from_api(s: String) -> String {
     match s.as_str() {
-        "watching" => "watching".to_string(),
-        "completed" => "completed".to_string(),
-        "on hold" | "on-hold"=> "on_hold".to_string(),
-        "dropped" => "dropped".to_string(), 
+        "add_to_list" => "".to_string(),
+        "on_hold" => "on hold".to_string(),
+        "plan_to_watch" => "plan to watch".to_string(),
+        _ => s,
+    }
+}
+
+/// Converts user watch status from internal format to API format
+pub fn watch_status_to_api(s: String) -> String {
+    match s.as_str() {
+        "on hold" | "on-hold" => "on_hold".to_string(),
         "plan to watch" => "plan_to_watch".to_string(),
-        _ => s.to_string(),
+        _ => s,
     }
 }
 
@@ -44,20 +56,21 @@ pub fn status_is_known(s: String) -> bool {
     )
 }
 
-fn my_status<'de, D>(deserializer: D) -> Result<String, D::Error>
+// Deserializers (thin wrappers around the transformation functions)
+fn anime_status<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
     D: Deserializer<'de>,
 {
     let s = String::deserialize(deserializer)?;
-    let status = match s.as_str() {
-        "watching" => "watching".to_string(),
-        "completed" => "completed".to_string(),
-        "on_hold" => "on hold".to_string(),
-        "dropped" => "dropped".to_string(),
-        "plan_to_watch" => "plan to watch".to_string(),
-        _ => s,
-    };
-    Ok(status)
+    Ok(anime_status_from_api(s))
+}
+
+fn list_status<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    Ok(watch_status_from_api(s))
 }
 
 fn default_true() -> bool {
@@ -99,38 +112,38 @@ pub mod fields {
     pub const STUDIOS: &str = "studios";
     pub const STATISTICS: &str = "statistics";
     pub const ALL: [&str; 32] = [
-        ID,
-        TITLE,
-        MAIN_PICTURE,
-        ALTERNATIVE_TITLES,
-        START_DATE,
-        END_DATE,
-        SYNOPSIS,
-        MEAN,
-        RANK,
-        POPULARITY,
-        NUM_LIST_USERS,
-        NUM_SCORING_USERS,
-        NSFW,
-        CREATED_AT,
-        UPDATED_AT,
-        MEDIA_TYPE,
-        STATUS,
-        GENRES,
-        MY_LIST_STATUS,
-        NUM_EPISODES,
-        START_SEASON,
-        BROADCAST,
-        SOURCE,
         AVERAGE_EPISODE_DURATION,
-        RATING,
-        PICTURES,
-        BACKGROUND,
-        RELATED_ANIME,
-        RELATED_MANGA,
+        ALTERNATIVE_TITLES,
+        NUM_SCORING_USERS,
         RECOMMENDATIONS,
-        STUDIOS,
+        NUM_LIST_USERS,
+        MY_LIST_STATUS,
+        RELATED_MANGA,
+        RELATED_ANIME,
+        MAIN_PICTURE,
+        START_SEASON,
+        NUM_EPISODES,
         STATISTICS,
+        START_DATE,
+        MEDIA_TYPE,
+        UPDATED_AT,
+        POPULARITY,
+        BACKGROUND,
+        CREATED_AT,
+        BROADCAST,
+        SYNOPSIS,
+        PICTURES,
+        END_DATE,
+        STUDIOS,
+        GENRES,
+        RATING,
+        SOURCE,
+        STATUS,
+        TITLE,
+        NSFW,
+        RANK,
+        MEAN,
+        ID,
     ];
 }
 
@@ -167,9 +180,10 @@ pub mod fields {
 /// - `studios` - Animation studios
 /// - `statistics` - User interaction stats
 #[allow(unused)]
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Entry)]
 pub struct Anime {
     /// Unique identifier for the anime
+    #[primary_key]
     #[serde(default)]
     pub id: usize,
 
@@ -234,7 +248,7 @@ pub struct Anime {
     pub media_type: String,
 
     /// Status of the anime (e.g., airing, finished, upcoming)
-    #[serde(deserialize_with = "status", default = "na")]
+    #[serde(deserialize_with = "anime_status", default = "na")]
     pub status: String,
 
     /// Genres associated with the anime
@@ -497,7 +511,7 @@ impl fmt::Display for Genre {
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct MyListStatus {
-    #[serde(deserialize_with = "my_status", default = "na")]
+    #[serde(deserialize_with = "list_status", default = "na")]
     pub status: String,
     pub score: u8,
     #[serde(default)]
@@ -625,11 +639,11 @@ impl Fetchable for Anime {
     type Output = Vec<Self>;
 
     fn fetch(
-        token: String,
+        identifier: Identifier,
         url: String,
         parameters: Vec<(String, String)>,
     ) -> Result<Self::Response, Box<dyn std::error::Error>> {
-        fetch_anime(token, url, parameters)
+        fetch_anime(identifier, url, parameters)
     }
 
     fn from_response(response: Self::Response) -> Self::Output {
@@ -696,11 +710,11 @@ impl Fetchable for FavoriteAnime {
     type Output = Vec<FavoriteAnime>;
 
     fn fetch(
-        token: String,
+        identifier: Identifier,
         url: String,
         parameters: Vec<(String, String)>,
     ) -> Result<Self::Response, Box<dyn std::error::Error>> {
-        fetch_favorited_anime(token, url, parameters)
+        fetch_favorited_anime(identifier, url, parameters)
     }
 
     fn from_response(response: Self::Response) -> Self::Output {
@@ -755,10 +769,24 @@ impl Update for Anime {
 
         Some(format!(
             "status={}&score={}&num_watched_episodes={}",
-            correct_status(self.my_list_status.status.clone()),
+            watch_status_to_api(self.my_list_status.status.clone()),
             self.my_list_status.score,
             self.my_list_status.num_episodes_watched,
         ))
+    }
+
+    fn to_offline_response(&self) -> Self::Response {
+        if !status_is_known(self.my_list_status.status.clone()) {
+            DeleteOrUpdate::Deleted(vec![])
+        } else {
+            let mut normalized = self.my_list_status.clone();
+            normalized.status = watch_status_from_api(normalized.status);
+            DeleteOrUpdate::Updated(normalized)
+        }
+    }
+
+    fn pre_update(&mut self) {
+        self.my_list_status.updated_at = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(); 
     }
 }
 
@@ -775,3 +803,4 @@ impl Storable for Anime {
         self.id
     }
 }
+

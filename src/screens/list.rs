@@ -2,17 +2,18 @@ use std::sync::mpsc::{Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
-use crate::add_screen_caching;
 use crate::app::Event;
-use crate::config::navigation::NavDirection;
 use crate::config::Config;
+use crate::config::navigation::NavDirection;
+use crate::mal::MalClient;
 use crate::mal::models::anime::{Anime, AnimeId};
 use crate::utils::functionStreaming::StreamableRunner;
 use crate::utils::imageManager::ImageManager;
 use crate::utils::input::Input;
+use crate::add_screen_caching;
 use crate::{app::Action, screens::Screen};
+use crate::mal::models::anime::status_is_known;
 
-use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
 use ratatui::Frame;
 use ratatui::layout::Layout;
@@ -199,6 +200,10 @@ impl ListScreen {
                         .unwrap_or(std::cmp::Ordering::Equal)
                 });
             }
+            "by last updated" => {
+                animes.sort_by(|a, b| a.my_list_status.updated_at.cmp(&b.my_list_status.updated_at))
+            }
+
             _ => {}
         }
 
@@ -252,6 +257,7 @@ impl ListScreen {
 
 impl Screen for ListScreen {
     add_screen_caching!();
+    // check_for_account!();
 
     // draws the screen
     fn draw(&mut self, frame: &mut Frame) {
@@ -306,7 +312,7 @@ impl Screen for ListScreen {
             top.x + top.width - side.width.div_ceil(2) - info_area.width / 2,
             info_area.y,
             info_area.width,
-            info_area.height.max(self.dropdowns.len() as u16 * 3),
+            (self.dropdowns.len() as u16 * 3).min(area.height - info_area.y - 2),
         );
 
         let [info_area_left, info_area_right] = Layout::default()
@@ -387,7 +393,9 @@ impl Screen for ListScreen {
     }
 
     fn handle_keyboard(&mut self, key_event: KeyEvent) -> Option<Action> {
-        let modifier = key_event.modifiers.contains(crossterm::event::KeyModifiers::CONTROL);
+        let modifier = key_event
+            .modifiers
+            .contains(crossterm::event::KeyModifiers::CONTROL);
         let nav = &Config::global().navigation;
 
         match self.focus {
@@ -537,11 +545,11 @@ impl Screen for ListScreen {
         // the dropdowns right side
         // if a dropdown is open it takes priority
         // otherwise check if hovering over any dropdown
-        let dropdown = match self
-            .dropdown_nav
-            .get_selected_item_mut(&mut self.dropdowns){
+        let dropdown = match self.dropdown_nav.get_selected_item_mut(&mut self.dropdowns) {
             Some(d) if d.is_open() => Some(d),
-            _ => self.dropdown_nav.get_hovered_item_mut(&mut self.dropdowns, mouse_event)
+            _ => self
+                .dropdown_nav
+                .get_hovered_item_mut(&mut self.dropdowns, mouse_event),
         };
 
         if let Some(dropdown) = dropdown {
@@ -572,41 +580,78 @@ impl Screen for ListScreen {
             }
         }
 
-
         // the animes list
         if self.navigatable.is_hovered(mouse_event) {
             self.focus = Focus::Content;
             self.navigatable.handle_scroll(mouse_event);
         }
 
-        if self.navigatable.get_hovered_index(mouse_event).is_some() {
-            if let crossterm::event::MouseEventKind::Down(_) = mouse_event.kind {
-                let anime_id = self.navigatable.get_selected_item(&self.filtered_animes)?;
-                return Some(Action::ShowOverlay(*anime_id));
-            }
+        if self.navigatable.get_hovered_index(mouse_event).is_some()
+            && let crossterm::event::MouseEventKind::Down(_) = mouse_event.kind
+        {
+            let anime_id = self.navigatable.get_selected_item(&self.filtered_animes)?;
+            return Some(Action::ShowOverlay(*anime_id));
         }
 
         None
     }
 
     fn background(&mut self) -> Option<JoinHandle<()>> {
+        // let store_animes = self.app_info.anime_store.get_list();
+        // let new_ids: Vec<AnimeId> = store_animes
+        //     .iter()
+        //     .filter(|anime| {
+        //         !self.all_animes.contains(&anime.id)
+        //             && status_is_known(anime.my_list_status.status.clone())
+        //     })
+        //     .map(|anime| anime.id)
+        //     .collect();
+        //
+        // if !new_ids.is_empty() {
+        //     self.all_animes.extend(new_ids);
+        //     self.filtered_animes = self.all_animes.clone();
+        // }
+
         if self.bg_loaded {
             return None;
         }
-        self.bg_loaded = true;
-
         let info = self.app_info.clone();
         let id = self.get_name();
         let (sx, rx) = channel::<LocalEvent>();
+
         self.bg_sx = Some(sx);
+        self.bg_loaded = true;
+
         ImageManager::init_with_threads(&self.image_manager, info.app_sx.clone());
         Some(std::thread::spawn(move || {
+            /////////////////////////////////////
+            ////////  Stratup  process  /////////
+            /////////////////////////////////////
             let mut cached_filter = Option::<Filters>::None;
             let mut cached_search = String::new();
 
+            // Fetch anime from local db
+            ///////////////////////////////////////
+            if !MalClient::user_is_logged_in() {
+                let local_animes = info.local_db.get::<Anime>(None).unwrap_or_default();
+                let list_animes = local_animes
+                    .iter()
+                    .filter(|anime| status_is_known(anime.my_list_status.status.clone()))
+                    .cloned()
+                    .collect::<Vec<Anime>>();
+                let anime_ids = list_animes.iter().map(|a| a.id).collect::<Vec<_>>();
+                let update = BackgroundUpdate::new(id.clone())
+                    .set("animes", local_animes)
+                    .set("anime_ids", anime_ids)
+                    .set("fetching", false);
+                info.app_sx.send(Event::BackgroundNotice(update)).ok();
+            }
+
+            // Fetch anime series from api
+            ///////////////////////////////////////
             let anime_generator = StreamableRunner::new()
-                // .with_batch_size(1000)
-                .change_batch_size_at(1000, 1)
+                .with_batch_size(20)
+                .change_batch_size_at(1, 1000)
                 .stop_early()
                 .stop_at(20);
 
@@ -617,14 +662,18 @@ impl Screen for ListScreen {
                 let update = BackgroundUpdate::new(id.clone())
                     .set("animes", animes)
                     .set("anime_ids", anime_ids)
-                    .set("fetching", false)
+                    .set("fetching", false) // updates "fetching" to false once first batch of anime is recieved
                     .set("extend", true);
                 info.app_sx.send(Event::BackgroundNotice(update)).ok();
             }
 
+            // Then set the "startup" to false to signal all requests are done
             let update = BackgroundUpdate::new(id.clone()).set("startup", false);
             info.app_sx.send(Event::BackgroundNotice(update)).ok();
 
+            /////////////////////////////////////
+            //////// Continuous running /////////
+            /////////////////////////////////////
             while let Ok(_event) = rx.recv() {
                 match _event {
                     LocalEvent::Dropdown(animes, filters) => {

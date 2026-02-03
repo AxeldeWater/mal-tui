@@ -1,11 +1,9 @@
-use crate::{mal::{network::fetch_user, Fetchable}, utils::imageManager::HasDisplayableImage};
-
+use crate::{config::Config, mal::{Fetchable, network::{Identifier, fetch_user}}, utils::imageManager::HasDisplayableImage};
 use serde::{Deserialize, Serialize};
-
 use super::anime::{Anime, FavoriteAnime};
 
 fn default_picture() -> String {
-    "https://dogfetus.no/image/pfp".to_string()
+    Config::global().network.auth_server.clone() + "/pfp"
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -14,7 +12,7 @@ pub struct User {
     pub id: usize,
     #[serde(default)]
     pub name: String,
-    #[serde(default= "default_picture")]
+    #[serde(default="default_picture")]
     pub picture: String,
     #[serde(default)]
     pub gender: String,
@@ -137,11 +135,11 @@ impl Fetchable for User {
     type Output = Self;
 
     fn fetch(
-        token: String,
+        identifier: Identifier,
         url: String,
         parameters: Vec<(String, String)>,
     ) -> Result<Self::Response, Box<dyn std::error::Error>> {
-        fetch_user(token, url, parameters)
+        fetch_user(identifier, url, parameters)
     }
 
     fn from_response(response: Self::Response) -> Self::Output {

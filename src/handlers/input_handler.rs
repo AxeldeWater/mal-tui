@@ -18,14 +18,6 @@ pub fn input_handler(sx: mpsc::Sender<Event>) {
                         // this happens when the receiver is dropped
                         return;
                     }
-
-                    // handle quit  TODO: (change to something better)
-                    if key_event.kind == crossterm::event::KeyEventKind::Press &&
-                        key_event.code == crossterm::event::KeyCode::Char('c') &&
-                        key_event.modifiers.contains(crossterm::event::KeyModifiers::CONTROL)
-                    {
-                        return;
-                    }
                 }
 
                 crossterm::event::Event::Mouse(mouse_event) => {

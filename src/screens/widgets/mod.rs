@@ -5,3 +5,4 @@ pub mod popup;
 pub mod navigatable;
 pub mod printable;
 pub mod infobox;
+pub mod sync;

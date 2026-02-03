@@ -1,5 +1,7 @@
 use crate::app::{Action, Event, ExtraInfo};
-use crate::mal::models::anime::AnimeId;
+use crate::mal::MalClient;
+use crate::mal::models::anime::{Anime, AnimeId};
+use crate::screens::widgets::sync;
 use std::collections::HashMap;
 use ratatui::layout::Layout;
 use std::thread::JoinHandle;
@@ -81,6 +83,16 @@ macro_rules! add_screen_caching {
         }
     };
 }
+#[macro_export]
+macro_rules! check_for_account {
+    () => {
+        fn needs_accound(&self) -> bool {
+            true
+        }
+    };
+}
+
+
 
 
 
@@ -139,7 +151,10 @@ pub trait Screen {
     }
     fn uses_navbar(&self) -> bool {
         true
-    } 
+    }
+    fn needs_accound(&self) -> bool {
+        false
+    }
 
     //INFO: just create a backgground function that returns a JoinHandle and the screen will have
     //background functionality. Use apply update to pass updates to the rendering thread
@@ -157,13 +172,14 @@ pub struct ScreenManager {
     screen_storage: HashMap<String, Box<dyn Screen>>,
     backgrounds: Vec<JoinHandle<()>>,
     passable_info: ExtraInfo,
+    pub syncing_popup: sync::SyncPopup,
 }
 
 #[allow(dead_code)]
 impl ScreenManager {
     pub fn new(passable_info: ExtraInfo) -> Self {
 
-        Self {
+        let mut manager = Self {
             // default screen is the launch screen
             navbar: navbar::NavBar::new()
                 .add_screen(OVERVIEW)
@@ -176,8 +192,12 @@ impl ScreenManager {
             current_screen: Box::new(launch::LaunchScreen::new(passable_info.clone())),
             screen_storage: HashMap::new(),
             backgrounds: Vec::new(),
+            syncing_popup: sync::SyncPopup::new(passable_info.clone()),
             passable_info,
-        }
+        };
+
+        manager.spawn_background();
+        manager
     }
 
     pub fn render_screen(&mut self, frame: &mut Frame) {
@@ -193,6 +213,7 @@ impl ScreenManager {
             self.navbar.render(frame, nav_bar_area);
         }
         self.overlay.render(frame);
+        self.syncing_popup.render(frame);
         self.error_overlay.render(frame);
     }
 
@@ -218,11 +239,20 @@ impl ScreenManager {
         self.error_overlay.open();
     }
 
+    pub fn interactive_sync(&mut self, anime: Vec<Anime>) {
+        self.syncing_popup.set_animes(anime);
+        self.syncing_popup.open();
+    }
+
     pub fn handle_input(&mut self, event: crossterm::event::Event) -> Option<Action> {
         match event {
             crossterm::event::Event::Key(key_event) => {
                 if self.error_overlay.is_open() {
                     return self.error_overlay.handle_keyboard(key_event);
+                }
+
+                if self.syncing_popup.is_open() {
+                    return self.syncing_popup.handle_keyboard(key_event);
                 }
 
                 if self.overlay.is_open() {
@@ -243,6 +273,10 @@ impl ScreenManager {
             crossterm::event::Event::Mouse(mouse_event) => {
                 if self.error_overlay.is_open() {
                     return self.error_overlay.handle_mouse(mouse_event);
+                }
+
+                if self.syncing_popup.is_open() {
+                    return self.syncing_popup.handle_mouse(mouse_event);
                 }
 
                 if self.overlay.is_open() {
@@ -292,7 +326,13 @@ impl ScreenManager {
         if let Some(screen) = self.screen_storage.remove(screen_name) {
             self.current_screen = screen;
         } else {
-            self.current_screen = create_screen(screen_name, &self.passable_info);
+            let new_screen = create_screen(screen_name, &self.passable_info);
+            if new_screen.needs_accound() && !MalClient::user_is_logged_in() {
+                self.show_error("You need to be logged in to access this tab.".to_string());
+                return;
+            } else {
+                self.current_screen = new_screen;
+            }
         }
 
         self.cleanup_backgrounds();

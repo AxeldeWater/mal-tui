@@ -1,10 +1,23 @@
+use std::{
+    collections::{HashMap, HashSet},
+    thread::JoinHandle,
+};
+
 use super::{
     ExtraInfo, Screen,
     screens::*,
     widgets::{button::Button, navigatable::Navigatable},
 };
-use crate::{app::Action, config::{navigation::NavDirection, Config}};
-use crate::mal::MalClient;
+use crate::{
+    app::Action,
+    config::{Config, navigation::NavDirection},
+};
+use crate::{
+    app::Event,
+    mal::{MalClient, models::anime::Anime},
+    screens::BackgroundUpdate,
+    utils::functionStreaming::StreamableRunner,
+};
 use crossterm::event::{KeyEvent, MouseEvent};
 use ratatui::{
     Frame,
@@ -16,10 +29,11 @@ use ratatui::{
 pub struct LaunchScreen {
     buttons: Vec<&'static str>,
     navigatable: Navigatable,
+    app_info: ExtraInfo,
 }
 
 impl LaunchScreen {
-    pub fn new(_: ExtraInfo) -> Self {
+    pub fn new(app_info: ExtraInfo) -> Self {
         Self {
             buttons: vec![
                 "Browse",
@@ -31,18 +45,13 @@ impl LaunchScreen {
                 "Exit",
             ],
             navigatable: Navigatable::new((3, 1)),
+            app_info,
         }
     }
 
     fn activate_button(&self, index: usize) -> Option<Action> {
         match index {
-            0 => {
-                if MalClient::user_is_logged_in() {
-                    Some(Action::SwitchScreen(OVERVIEW))
-                } else {
-                    Some(Action::ShowError("Please log in to browse".to_string()))
-                }
-            }
+            0 => Some(Action::SwitchScreen(OVERVIEW)),
             1 => {
                 if MalClient::user_is_logged_in() {
                     MalClient::log_out();
@@ -52,6 +61,7 @@ impl LaunchScreen {
                 }
             }
             2 => Some(Action::Quit),
+            // 2 => Some(Action::SwitchScreen(LAUNCH)),
             _ => None,
         }
     }
@@ -92,12 +102,12 @@ impl Screen for LaunchScreen {
             .split(page_chunk[0]);
 
         let header_text = [
-            " ███╗   ███╗ █████╗ ██╗                ██████╗██╗     ██╗ ",
-            " ████╗ ████║██╔══██╗██║               ██╔════╝██║     ██║ ",
-            " ██╔████╔██║███████║██║     ███████╗  ██║     ██║     ██║ ",
-            " ██║╚██╔╝██║██╔══██║██║     ╚══════╝  ██║     ██║     ██║ ",
-            " ██║ ╚═╝ ██║██║  ██║███████╗          ╚██████╗███████╗██║ ",
-            " ╚═╝     ╚═╝╚═╝  ╚═╝╚══════╝           ╚═════╝╚══════╝╚═╝ ",
+            " ███╗   ███╗ █████╗ ██╗              ████████╗██╗   ██╗██╗ ",
+            " ████╗ ████║██╔══██╗██║              ╚══██╔══╝██║   ██║██║ ",
+            " ██╔████╔██║███████║██║     ███████╗    ██║   ██║   ██║██║ ",
+            " ██║╚██╔╝██║██╔══██║██║     ╚══════╝    ██║   ██║   ██║██║ ",
+            " ██║ ╚═╝ ██║██║  ██║███████╗            ██║   ╚██████╔╝██║ ",
+            " ╚═╝     ╚═╝╚═╝  ╚═╝╚══════╝            ╚═╝    ╚═════╝ ╚═╝ ",
         ];
 
         let alpha = Paragraph::new(header_text.join("\n"))
@@ -133,10 +143,10 @@ impl Screen for LaunchScreen {
     }
 
     fn handle_mouse(&mut self, mouse_event: MouseEvent) -> Option<Action> {
-        if let Some(index) = self.navigatable.get_hovered_index(mouse_event) {
-            if let crossterm::event::MouseEventKind::Down(_) = mouse_event.kind {
-                return self.activate_button(index);
-            }
+        if let Some(index) = self.navigatable.get_hovered_index(mouse_event)
+            && let crossterm::event::MouseEventKind::Down(_) = mouse_event.kind
+        {
+            return self.activate_button(index);
         };
 
         None
@@ -144,5 +154,57 @@ impl Screen for LaunchScreen {
 
     fn uses_navbar(&self) -> bool {
         false
+    }
+
+    fn background(&mut self) -> Option<JoinHandle<()>> {
+        if !MalClient::user_is_logged_in() {
+            return None;
+        }
+
+        let info = self.app_info.clone();
+        let id = self.get_name();
+
+        Some(std::thread::spawn(move || {
+            ////////////////////////////////////////
+            //////// Sync local db with MAL ////////
+            ////////////////////////////////////////
+            let local_animes = info.local_db.get::<Anime>(None).unwrap_or_default();
+
+            let mut animes_to_sync: HashMap<_, _> =
+                local_animes.into_iter().map(|a| (a.id, a)).collect();
+
+            let anime_generator = StreamableRunner::new()
+                .with_batch_size(1000)
+                .stop_early()
+                .stop_at(20);
+
+            for animes in anime_generator
+                .run(|offset, limit| info.mal_client.get_anime_list(None, offset, limit))
+            {
+                for anime in animes.iter() {
+                    let Some(local_anime) = animes_to_sync.get(&anime.id) else{
+                        continue;
+                    };
+
+                    if anime.my_list_status.status == local_anime.my_list_status.status
+                        && anime.my_list_status.score == local_anime.my_list_status.score
+                        && anime.my_list_status.num_episodes_watched
+                            == local_anime.my_list_status.num_episodes_watched
+                    {
+                        animes_to_sync.remove(&anime.id);
+                    }
+                }
+                let update = BackgroundUpdate::new(id.clone()).set("animes", animes);
+                info.app_sx.send(Event::BackgroundNotice(update)).ok();
+            }
+
+            let vec_animes = animes_to_sync
+                .values()
+                .cloned()
+                .collect::<Vec<Anime>>();
+
+            let update = BackgroundUpdate::new(id.clone()).set("sync", vec_animes);
+            info.app_sx.send(Event::BackgroundNotice(update)).ok();
+        }))
     }
 }

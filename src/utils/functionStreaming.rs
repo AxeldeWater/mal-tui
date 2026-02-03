@@ -1,22 +1,21 @@
 pub struct StreamableRunner {
     max_batch_size: usize,
 
-    max_of_batches: Option<usize>,
+    max_nr_of_batches: Option<usize>,
     early_stop: bool,
 
-    // for changeing 
+    // for changeing
     new_batch_size: Option<usize>,
     new_batch_index: usize,
 }
 
 /// default batch size 20
-impl StreamableRunner
-{
+impl StreamableRunner {
     pub fn new() -> Self {
         StreamableRunner {
             max_batch_size: 20,
 
-            max_of_batches: None,
+            max_nr_of_batches: None,
             early_stop: false,
 
             new_batch_size: None,
@@ -35,7 +34,7 @@ impl StreamableRunner
         self
     }
 
-    pub fn change_batch_size_at(mut self, new_size: usize, index: usize) -> Self {
+    pub fn change_batch_size_at(mut self, index: usize, new_size: usize) -> Self {
         if new_size > 0 {
             self.new_batch_index = index;
             self.new_batch_size = Some(new_size);
@@ -44,7 +43,7 @@ impl StreamableRunner
     }
 
     pub fn stop_at(mut self, limit: usize) -> Self {
-        self.max_of_batches = Some(limit);
+        self.max_nr_of_batches = Some(limit);
         self
     }
 
@@ -54,7 +53,7 @@ impl StreamableRunner
     // {
     //     StreamableRunner {
     //         max_batch_size: self.max_batch_size,
-    //         max_of_batches: self.max_of_batches,
+    //         max_nr_of_batches: self.max_nr_of_batches,
     //         early_stop: self.early_stop,
     //         new_batch_size: self.new_batch_size,
     //         new_batch_index: self.new_batch_index,
@@ -71,24 +70,23 @@ impl StreamableRunner
         let mut offset: usize = 0;
         let mut early_stop = false;
         let mut iteration = 0;
-        let mut max_batch_size= self.max_batch_size;
+        let mut max_batch_size = self.max_batch_size;
 
         std::iter::from_fn(move || {
             if early_stop {
                 return None;
             }
 
-            if let Some(limit) = self.max_of_batches{
-                if limit == iteration {
-                    return None;
-                }
+            if let Some(limit) = self.max_nr_of_batches
+                && limit == iteration
+            {
+                return None;
             }
 
-
-            if let Some(new_size) = self.new_batch_size {
-                if iteration == self.new_batch_index {
-                    max_batch_size = new_size;
-                }
+            if let Some(new_size) = self.new_batch_size
+                && iteration == self.new_batch_index
+            {
+                max_batch_size = new_size;
             }
 
             let batch = fetch_fn(offset, max_batch_size)?;

@@ -10,6 +10,8 @@ To reset to default settings, simply delete the config file. mal-cli will automa
 ## Default Configuration
 
 ```toml
+allow_nsfw = false
+
 [navigation]
 nav_up = ["Up", { Char = "k" }]
 nav_down = ["Down", { Char = "j" }]

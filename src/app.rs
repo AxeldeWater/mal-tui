@@ -1,23 +1,24 @@
+use crate::config::Config;
 use crate::handlers::get_handlers;
 use crate::mal::MalClient;
+use crate::mal::models::WatchHistory;
 use crate::mal::models::anime::Anime;
 use crate::mal::models::anime::AnimeId;
-use crate::player;
 use crate::screens::BackgroundUpdate;
 use crate::screens::ScreenManager;
-use crate::config::Config;
-use crate::utils::store::Store;
 use crate::utils::errorBus;
+use crate::utils::store::Store;
+use crate::player;
 
+use database::DatabaseManager;
 use chrono::DateTime;
 use chrono::Local;
+use chrono::Utc;
 use crossterm::event::DisableMouseCapture;
 use crossterm::event::EnableMouseCapture;
 use image::DynamicImage;
 use ratatui::DefaultTerminal;
-use std::fs::OpenOptions;
 use std::io;
-use std::io::Write;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc;
@@ -29,6 +30,7 @@ pub struct ExtraInfo {
     pub app_sx: mpsc::Sender<Event>,
     pub mal_client: Arc<MalClient>,
     pub anime_store: Store<Anime>,
+    pub local_db: DatabaseManager,
 }
 
 // these are retured when a screen handles an input
@@ -40,6 +42,7 @@ pub enum Action {
     ShowOverlay(AnimeId),
     NavbarSelect(bool),
     ShowError(String),
+    SyncAnimes(Vec<(bool, Anime)>),
     Quit,
 }
 
@@ -53,6 +56,7 @@ pub enum CurrentInfo {
 // these are sent over the channel at any time
 #[allow(dead_code)]
 pub enum Event {
+    SyncStatus(bool, bool, Box<Anime>),
     Input(crossterm::event::Event),
     KeyPress(crossterm::event::KeyEvent),
     MouseClick(crossterm::event::MouseEvent),
@@ -84,10 +88,9 @@ impl std::fmt::Debug for Event {
                 .field("height", height)
                 .finish(),
             Event::BackgroundNotice(_) => f.debug_struct("BackgroundNotice").finish(),
-            Event::ImageCached(index, _) => f
-                .debug_struct("ImageCached")
-                .field("index", index)
-                .finish(),
+            Event::ImageCached(index, _) => {
+                f.debug_struct("ImageCached").field("index", index).finish()
+            }
             Event::StorageUpdate(anime_id, _) => f
                 .debug_struct("StorageUpdate")
                 .field("anime_id", anime_id)
@@ -96,7 +99,7 @@ impl std::fmt::Debug for Event {
                 .debug_struct("ShowError")
                 .field("message", message)
                 .finish(),
-            Event::Rerender => f.debug_struct("Rerender").finish(),   
+            Event::Rerender => f.debug_struct("Rerender").finish(),
             _ => f.debug_struct("OtherEvent").finish(),
         }
     }
@@ -121,25 +124,30 @@ pub struct App {
 impl App {
     pub fn new(terminal: DefaultTerminal) -> App {
         let (sx, rx) = mpsc::channel::<Event>();
-
         errorBus::init(sx.clone());
 
-        let mal_client = Arc::new(MalClient::new());
+        let db_path = Config::data_dir()
+            .join("log.db")
+            .to_string_lossy()
+            .to_string();
+        let db_manager =
+            DatabaseManager::new(db_path).expect("Failed to initialize database manager");
+        let mal_client = Arc::new(MalClient::new(db_manager.clone()));
         let universal_info = ExtraInfo {
             app_sx: sx.clone(),
             mal_client: mal_client.clone(),
             anime_store: Store::new(),
+            local_db: db_manager,
         };
-
 
         App {
             mal_client: mal_client.clone(),
             screen_manager: ScreenManager::new(universal_info.clone()),
+            anime_player: player::AnimePlayer::new(),
             current_info: None,
+            shared_info: universal_info,
             is_running: true,
             terminal,
-            shared_info: universal_info,
-            anime_player: player::AnimePlayer::new(),
 
             rx,
             sx,
@@ -174,6 +182,9 @@ impl App {
                         if let Some(animes) = update.take::<Vec<Anime>>("animes") {
                             self.shared_info.anime_store.add_bulk(animes);
                         }
+                        if let Some(sync_animes) = update.take::<Vec<Anime>>("sync") {
+                            self.screen_manager.interactive_sync(sync_animes);
+                        }
 
                         self.screen_manager.update_screen(update);
                     }
@@ -188,6 +199,20 @@ impl App {
                     Event::ShowError(message) => {
                         self.screen_manager.show_error(message);
                     }
+                    Event::SyncStatus(success, sync, anime ) => {
+                        if success {
+                            if sync {
+                                self.screen_manager.syncing_popup.finished_syncing(*anime);
+                            }
+                            else{
+                                self.screen_manager.syncing_popup.finished_deleting(*anime);
+                            }
+                        }
+                        else {
+                            self.screen_manager.show_error(format!("Failed to sync {}", anime.title));
+                        }
+
+                    }
                     _ => {}
                 }
             }
@@ -196,30 +221,22 @@ impl App {
         Ok(())
     }
 
-    fn logg_watched_info(&self, anime: &Anime, details: &player::PlayResult) {
-        let app_dir = Config::data_dir();
+    fn log_watched_info(&self, anime: &Anime, details: player::PlayResult) {
         let now: DateTime<Local> = Local::now();
-        let timestamp = now.format("%Y-%m-%d %H:%M:%S");
-        let log_file = app_dir.join("watch_history");
-        let log_entry = format!(
-            "{} -> {} -> \"{}\" -> {} -> {}/{} -> {} -> {}\n",
-            timestamp,
-            anime.id,
-            anime.title,
-            details.episode,
-            details.current_time,
-            details.total_time,
-            details.percentage,
-            details.completed
-        );
-
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(log_file)
-            .expect("Failed to open log file");
-
-        file.write_all(log_entry.as_bytes()).ok();
+        let history = WatchHistory {
+            id: 0,
+            anime_id: anime.id,
+            timestamp: now.format("%Y-%m-%d %H:%M:%S").to_string(),
+            episode: details.episode as i32,
+            current_time: details.current_time,
+            total_time: details.total_time,
+            percentage: details.percentage,
+            is_completed: details.is_completed,
+        };
+        self.shared_info.local_db.create_table::<Anime>().ok();
+        self.shared_info.local_db.create_table::<WatchHistory>().ok();
+        self.shared_info.local_db.upsert(anime.clone()).ok();
+        self.shared_info.local_db.upsert(history).ok();
     }
 
     fn play_anime(&mut self, anime_id: AnimeId, episode: u32) -> Option<()> {
@@ -236,17 +253,20 @@ impl App {
 
         crossterm::execute!(std::io::stderr(), DisableMouseCapture).ok();
 
-        match self.anime_player.play_episode_manually(&anime, next_episode) {
-            Ok(details) => {
-                // update teh status to now watching
+        match self
+            .anime_player
+            .play_episode_manually(&anime, next_episode)
+        {
+            Ok(episode_details) => {
+                // update the status to now watching (in memory first)
                 self.shared_info
                     .anime_store
                     .update(anime.id, |anime_to_update| {
-                        anime_to_update.my_list_status.status = "watching".to_string();
+                        anime_to_update.my_list_status.status = "watching".into();
                     });
 
-                if details.completed {
-                    // update the store <-
+                if episode_details.is_completed {
+                    // update the number of episodes watched 
                     self.shared_info
                         .anime_store
                         .update(anime.id, |anime_to_update| {
@@ -255,17 +275,23 @@ impl App {
                             {
                                 anime_to_update.my_list_status.num_episodes_watched += 1;
                             } else {
-                                anime_to_update.my_list_status.status = "completed".to_string();
+                                anime_to_update.my_list_status.status = "completed".into();
                             }
+                            anime_to_update.my_list_status.updated_at = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(); 
                         });
                 }
-                // get the anime again to make sure the details are up to date with the update above
+
+                // get the anime with the updated details from above
                 let updated = self.shared_info.anime_store.get(&anime.id)?;
-                self.shared_info
-                    .mal_client
-                    .update_user_list_async((*updated).clone());
+
+                // now update this to the mal servers if the user is logged in
+                if MalClient::user_is_logged_in(){
+                    self.shared_info
+                        .mal_client
+                        .update_user_list_async((*updated).clone());
+                }
                 self.screen_manager.refresh();
-                self.logg_watched_info(&anime, &details);
+                self.log_watched_info(&updated, episode_details);
             }
             Err(e) => {
                 self.screen_manager.show_error(e.to_string());
@@ -279,13 +305,14 @@ impl App {
 
     fn handle_input(&mut self, event: crossterm::event::Event) {
         // quit the app on ctrl+c
-        if let crossterm::event::Event::Key(key_event) = event {
-            if key_event.kind == crossterm::event::KeyEventKind::Press &&
-            key_event.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) &&
-            key_event.code == crossterm::event::KeyCode::Char('c')
-            {
-                self.is_running = false;
-            }
+        if let crossterm::event::Event::Key(key_event) = event
+            && key_event
+                .modifiers
+                .contains(crossterm::event::KeyModifiers::CONTROL)
+            && key_event.kind == crossterm::event::KeyEventKind::Press
+            && key_event.code == crossterm::event::KeyCode::Char('c')
+        {
+            self.is_running = false;
         }
 
         let result = self.screen_manager.handle_input(event);
@@ -309,6 +336,25 @@ impl App {
                 Action::ShowError(message) => {
                     self.screen_manager.show_error(message);
                 }
+                Action::SyncAnimes(animes) => {
+                    let tx = self.sx.clone();
+                    let client = self.mal_client.clone();
+                    let local_db = self.shared_info.local_db.clone();
+
+                    tokio::spawn(async move {
+                        for (sync, anime) in animes {
+                            if sync {
+                                let result = client.update_user_list_async(anime.clone()).await;
+                                let success = result.map(|r| r.is_ok()).unwrap_or(false);
+                                let _ = tx.send(Event::SyncStatus(success, true,  Box::new(anime)));
+                            } else {
+                                let success = local_db.delete(&anime).is_ok();
+                                let _ = tx.send(Event::SyncStatus(success, false, Box::new(anime)));
+                            }
+                        }
+                    });
+                }
+
                 Action::Quit => {
                     self.is_running = false;
                 }

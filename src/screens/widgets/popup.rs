@@ -5,15 +5,21 @@ use std::{
     },
     thread::JoinHandle,
 };
+use chrono::Utc;
 
 use crate::{
-    app::{Action, Event}, config::{navigation::NavDirection, Config}, mal::{
-        models::anime::{status_is_known, Anime, AnimeId, DeleteOrUpdate, MyListStatus}, MalClient
-    }, screens::{BackgroundUpdate, ExtraInfo}, send_error, utils::{
+    app::{Action, Event},
+    config::{Config, navigation::NavDirection},
+    mal::{
+        MalClient,
+        models::anime::{Anime, AnimeId, DeleteOrUpdate, MyListStatus, status_is_known},
+    },
+    screens::{BackgroundUpdate, ExtraInfo},
+    utils::{
         imageManager::ImageManager,
-        stringManipulation::{format_date, DisplayString},
+        stringManipulation::{DisplayString, format_date},
         terminalCapabilities::TERMINAL_RATIO,
-    }
+    },
 };
 use crossterm::event::{KeyCode, KeyEvent, MouseEvent, MouseEventKind};
 use ratatui::{
@@ -21,6 +27,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Margin, Position, Rect},
     style::{Color, Style, Stylize},
     symbols::{self, border},
+    text::Text,
     widgets::{
         Block, Borders, Clear, Padding, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
         Wrap,
@@ -74,7 +81,7 @@ impl AnimePopup {
     pub fn new(info: ExtraInfo) -> Self {
         let buttons = vec![
             "Play".to_string(),
-            "nothing yet".to_string(),
+            "Nothing yet".to_string(),
             "Play from start".to_string(),
             "Open".to_string(),
         ];
@@ -115,21 +122,13 @@ impl AnimePopup {
                 match event {
                     // send any userchoice to the mal backend
                     LocalEvent::UserChoice(index, anime) => {
-                        match info.mal_client.update_user_list(anime) {
-                            Ok(result) => {
-                                let update = BackgroundUpdate::new("popup")
-                                    .set("success", (index, result.clone()));
-                                info.app_sx.send(Event::BackgroundNotice(update)).ok();
-                            }
-                            Err(e) => {
-                                info.app_sx
-                                    .send(Event::BackgroundNotice(
-                                        BackgroundUpdate::new("popup")
-                                            .set("failure", (index, e.to_string())),
-                                    ))
-                                    .ok();
-                            }
-                        }
+                        let update = match info.mal_client.update_user_list(anime) {
+                            Ok(result) => BackgroundUpdate::new("popup")
+                                .set("success", (index, result.clone())),
+                            Err(e) => BackgroundUpdate::new("popup")
+                                .set("failure", (index, e.to_string())),
+                        };
+                        info.app_sx.send(Event::BackgroundNotice(update)).ok();
                     }
 
                     // update the number of released episodes
@@ -156,7 +155,6 @@ impl AnimePopup {
         }))
     }
 
-    // TODO: then this is not needed
     pub fn apply_update(&mut self, mut update: BackgroundUpdate) {
         if let Some((index, (_, update))) =
             update.take::<(usize, (usize, DeleteOrUpdate))>("success")
@@ -171,20 +169,18 @@ impl AnimePopup {
             if let Some(button) = self
                 .status_nav
                 .get_item_at_index_mut(&mut self.status_buttons, index)
+                && let Some(option) = button.get_selected_option()
             {
-                if let Some(option) = button.get_selected_option() {
-                    button.set_color(Config::global().theme.status_color(option));
-                };
-            }
+                button.set_color(Config::global().theme.status_color(option));
+            };
         }
 
-        if let Some(index) = update.take::<usize>("failure") {
-            if let Some(button) = self
+        if let Some((index, _err)) = update.take::<(usize, String)>("failure")
+            && let Some(button) = self
                 .status_nav
                 .get_item_at_index_mut(&mut self.status_buttons, index)
-            {
-                button.set_color(Config::global().theme.error);
-            }
+        {
+            button.set_color(Config::global().theme.error);
         }
 
         self.update_buttons();
@@ -247,7 +243,11 @@ impl AnimePopup {
                 .add_option("Completed")
                 .add_option("On Hold")
                 .add_option("Dropped")
-                .with_color(Config::global().theme.status_color(&anime.my_list_status.status))
+                .with_color(
+                    Config::global()
+                        .theme
+                        .status_color(&anime.my_list_status.status),
+                )
                 .with_arrows(Arrows::Static)
                 .with_selected_option(anime.my_list_status.status.to_string())
                 .clone(),
@@ -315,22 +315,18 @@ impl AnimePopup {
 
         match index {
             0 => {
-                anime.my_list_status.status =
-                    selection.to_lowercase().replace(" ", "_");
+                anime.my_list_status.status = selection.to_lowercase().replace(" ", "_");
             }
             1 => {
                 anime.my_list_status.score = selection.parse().unwrap_or(0);
             }
             2 => {
-                anime.my_list_status.num_episodes_watched =
-                    selection.parse().unwrap_or(0);
+                anime.my_list_status.num_episodes_watched = selection.parse().unwrap_or(0);
                 if !status_is_known(anime.my_list_status.status.clone())
                     && anime.my_list_status.num_episodes_watched == 0
                 {
                     return;
-                } else if !status_is_known(
-                    anime.my_list_status.status.clone(),
-                ) {
+                } else if !status_is_known(anime.my_list_status.status.clone()) {
                     anime.my_list_status.status = "watching".to_string();
                 }
             }
@@ -342,8 +338,7 @@ impl AnimePopup {
             .ok();
 
         self.set_play_button_episode(Some(
-            (anime.my_list_status.num_episodes_watched + 1)
-                .min(anime.num_episodes),
+            (anime.my_list_status.num_episodes_watched + 1).min(anime.num_episodes),
         ));
     }
 
@@ -428,13 +423,21 @@ impl AnimePopup {
                                 button.close();
                             }
                         }
+                        (true, _) => {
+                            if let Some(selection) = dropdown.handle_input(key_event) {
+                                dropdown.set_color(Color::White);
+                                self.update_status(selection, index);
+                            }
+                            return None;
+                        }
                         _ => {
                             if let Some(selection) = dropdown.handle_input(key_event) {
                                 dropdown.set_color(Color::White);
                                 self.update_status(selection, index);
                                 return None;
                             }
-                            if nav.is_close(&key_event.code){
+                            if nav.is_close(&key_event.code) {
+                                self.close();
                                 return None;
                             }
                         }
@@ -479,18 +482,20 @@ impl AnimePopup {
         let pos = Position::new(mouse_event.column, mouse_event.row);
         let is_click = matches!(mouse_event.kind, MouseEventKind::Down(_));
 
-
         // the status buttons
         let dropdown = match self
             .status_nav
-            .get_selected_item_mut(&mut self.status_buttons){
+            .get_selected_item_mut(&mut self.status_buttons)
+        {
             Some(d) if d.is_open() => Some(d),
-            _ => self.status_nav.get_hovered_item_mut(&mut self.status_buttons, mouse_event)
+            _ => self
+                .status_nav
+                .get_hovered_item_mut(&mut self.status_buttons, mouse_event),
         };
 
         if let Some(dropdown) = dropdown {
             self.focus = Focus::StatusButtons;
-            if let Some(selection) = dropdown.handle_mouse(mouse_event){
+            if let Some(selection) = dropdown.handle_mouse(mouse_event) {
                 dropdown.set_color(Color::White);
                 let index = self.status_nav.get_selected_index();
                 self.update_status(selection, index);
@@ -498,24 +503,22 @@ impl AnimePopup {
             return None;
         }
 
-
         // the synopsis area
-        if let Some(s_area) = self.synopsis_area {
-            if s_area.contains(pos) {
-                self.focus = Focus::Synopsis;
-                match mouse_event.kind {
-                    MouseEventKind::ScrollUp => {
-                        self.synopsis_scroll = self.synopsis_scroll.saturating_sub(1);
-                    }
-                    MouseEventKind::ScrollDown => {
-                        self.synopsis_scroll += 1;
-                    }
-                    _ => {}
+        if let Some(s_area) = self.synopsis_area
+            && s_area.contains(pos)
+        {
+            self.focus = Focus::Synopsis;
+            match mouse_event.kind {
+                MouseEventKind::ScrollUp => {
+                    self.synopsis_scroll = self.synopsis_scroll.saturating_sub(1);
                 }
-                return None;
+                MouseEventKind::ScrollDown => {
+                    self.synopsis_scroll += 1;
+                }
+                _ => {}
             }
+            return None;
         }
-
 
         // close the whole popup
         if is_click && !p_area.contains(pos) {
@@ -523,8 +526,7 @@ impl AnimePopup {
             return None;
         }
 
-
-        // the play buttons 
+        // the play buttons
         if self.button_nav.get_hovered_index(mouse_event).is_some() {
             self.focus = Focus::PlayButtons;
             if is_click {
@@ -610,7 +612,15 @@ impl AnimePopup {
         // add the buttons
         self.button_nav
             .construct(&self.buttons, buttons_area, |button, area, highlighted| {
-                let button_paragraph = Paragraph::new(button.to_string())
+                let button_text = Text::styled(
+                    button.to_string(),
+                    Style::default().fg(if highlighted && self.focus == Focus::PlayButtons {
+                        Config::global().theme.highlight
+                    } else {
+                        Config::global().theme.text
+                    }),
+                );
+                let button_paragraph = Paragraph::new(button_text)
                     .block(
                         Block::default()
                             .borders(Borders::ALL)
@@ -621,7 +631,7 @@ impl AnimePopup {
                         if highlighted && self.focus == Focus::PlayButtons {
                             Config::global().theme.highlight
                         } else {
-                           Config::global().theme.secondary 
+                            Config::global().theme.primary
                         },
                     ));
                 frame.render_widget(button_paragraph, area);
@@ -659,7 +669,7 @@ impl AnimePopup {
         let info_area = Rect {
             x: title_area.x,
             y: info_area.y,
-            width: title_area.width-1,
+            width: title_area.width - 1,
             height: info_area.height.saturating_sub(buttons_area.height),
         };
 
@@ -816,7 +826,12 @@ impl AnimePopup {
             .add_text_item("Status", anime.status.to_string())
             .add_text_item("Source", anime.source.to_string())
             .add_text_item("Id", anime.id.to_string())
-            .render(frame, info_area_one, Margin::new(8, 0), Config::global().theme.primary);
+            .render(
+                frame,
+                info_area_one,
+                Margin::new(8, 0),
+                Config::global().theme.primary,
+            );
 
         InfoBox::new()
             .add_text_item("Added", format_date(&anime.created_at))
@@ -826,7 +841,12 @@ impl AnimePopup {
             .add_text_item("Started", format_date(&anime.start_date))
             .add_row()
             .add_text_item("Ended", format_date(&anime.end_date))
-            .render(frame, info_area_two, Margin::new(8, 0), Config::global().theme.primary);
+            .render(
+                frame,
+                info_area_two,
+                Margin::new(8, 0),
+                Config::global().theme.primary,
+            );
 
         // buttons within info area
         let status_buttons_area = Rect {
@@ -980,7 +1000,7 @@ impl SeasonPopup {
                 }
                 return None;
             }
-            _ => {},
+            _ => {}
         };
 
         // for selecting
@@ -1005,12 +1025,12 @@ impl SeasonPopup {
             self.previous_year = year;
             self.hide();
 
-            return Some((year, season))
+            return Some((year, season));
         }
 
         if nav.is_close(&key_event.code) {
             self.hide();
-        } 
+        }
 
         None
     }
@@ -1019,10 +1039,10 @@ impl SeasonPopup {
         // if the season area has been rendered yet
         let activate_area = self.activate_area?;
         let mouse_pos = Position::new(mouse_event.column, mouse_event.row);
-        if activate_area.contains(mouse_pos) {
-            if let crossterm::event::MouseEventKind::Down(_) = mouse_event.kind {
-                self.toggle();
-            }
+        if activate_area.contains(mouse_pos)
+            && let crossterm::event::MouseEventKind::Down(_) = mouse_event.kind
+        {
+            self.toggle();
         }
 
         // the popup below the season area
@@ -1393,7 +1413,7 @@ impl SelectionPopup {
             if key_event.code == KeyCode::Enter {
                 self.open();
             }
-            return None; 
+            return None;
         }
 
         match nav.get_direction(&key_event.code) {
@@ -1407,7 +1427,7 @@ impl SelectionPopup {
                 }
                 return None;
             }
-            _ => {},
+            _ => {}
         }
 
         if nav.is_select(&key_event.code) {
@@ -1418,7 +1438,7 @@ impl SelectionPopup {
             let selected_option = self.options[self.next_index].clone();
             self.selected_index = self.next_index;
             self.close();
-            return Some(selected_option)
+            return Some(selected_option);
         }
 
         if nav.is_close(&key_event.code) {
@@ -1438,7 +1458,6 @@ impl SelectionPopup {
             self.toggle();
             return None;
         }
-
 
         // this handles inside the popup box
         let popup_area = self.popup_area?;
@@ -1460,7 +1479,6 @@ impl SelectionPopup {
                 _ => {}
             }
         }
-
 
         // for clicking and highlighting
         for (i, row) in popup_area.inner(Margin::new(0, 1)).rows().enumerate() {
@@ -1496,7 +1514,18 @@ impl SelectionPopup {
             self.displaying_format.replace("{}", &option)
         };
 
-        let filter = Paragraph::new(option)
+        let option_with_color = Text::styled(
+            option,
+            Style::default().fg(if highlighted {
+                Config::global().theme.highlight
+            } else if self.color == Config::global().theme.primary {
+                Config::global().theme.text
+            } else {
+                self.color
+            }),
+        );
+
+        let filter = Paragraph::new(option_with_color)
             .block(
                 Block::default()
                     .borders(Borders::ALL)
@@ -1609,14 +1638,16 @@ impl SelectionPopup {
 
                 if self.scroll > 0 {
                     frame.render_widget(
-                        Paragraph::new("↑").style(Style::default().fg(Config::global().theme.highlight)),
+                        Paragraph::new("↑")
+                            .style(Style::default().fg(Config::global().theme.highlight)),
                         Rect::new(scroll_info_area.x, scroll_info_area.y, 1, 1),
                     );
                 }
 
                 if self.scroll + max_visible_options < self.options.len() {
                     frame.render_widget(
-                        Paragraph::new("↓").style(Style::default().fg(Config::global().theme.highlight)),
+                        Paragraph::new("↓")
+                            .style(Style::default().fg(Config::global().theme.highlight)),
                         Rect::new(
                             scroll_info_area.x,
                             scroll_info_area.y + scroll_info_area.height.saturating_sub(1),

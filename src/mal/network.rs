@@ -1,6 +1,9 @@
+use crate::send_error;
+
 use super::models::anime::{AnimeResponse, FavoriteResponse};
 use super::models::user::User;
 use cached::proc_macro::cached;
+use database::DatabaseManager;
 use std::fmt::Debug;
 use std::io::Read;
 use std::sync::OnceLock;
@@ -28,6 +31,32 @@ fn get_agent() -> &'static Agent {
             .build()
             .into()
     })
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct Identifier {
+    pub auth_token: Option<String>,
+    pub client_id: Option<String>,
+}
+
+impl Identifier {
+    pub fn new(auth_token: Option<String>, client_id: Option<String>) -> Self {
+        Self {
+            auth_token,
+            client_id,
+        }
+    }
+
+    pub fn to_headers(&self) -> Vec<(String, String)> {
+        let mut headers = Vec::new();
+        if let Some(token) = &self.auth_token {
+            headers.push(("Authorization".to_string(), format!("Bearer {}", token)));
+        }
+        if let Some(client_id) = &self.client_id {
+            headers.push(("X-MAL-Client-ID".to_string(), client_id.clone()));
+        }
+        headers
+    }
 }
 
 #[cached(size = 2000, result = true)]
@@ -70,54 +99,45 @@ pub fn fetch_image(uri: String) -> Result<image::DynamicImage, String> {
 
 #[cached(size = 2000, result = true)]
 pub fn fetch_anime(
-    token: String,
+    identifier: Identifier,
     url: String,
     parameters: Vec<(String, String)>,
 ) -> Result<AnimeResponse, Box<dyn std::error::Error>> {
-    if token.is_empty() {
-        return Err("Access token is not set".into());
-    }
     send_request::<AnimeResponse>(
-        "GET",
+        "GET", //
         url,
         parameters,
-        vec![("Authorization".to_string(), format!("Bearer {}", token))],
+        identifier.to_headers(),
         None,
     )
 }
 
 #[cached(result = true)]
 pub fn fetch_user(
-    token: String,
+    identifier: Identifier,
     url: String,
     parameters: Vec<(String, String)>,
 ) -> Result<User, Box<dyn std::error::Error>> {
-    if token.is_empty() {
-        return Err("Access token is not set".into());
-    }
     send_request::<User>(
-        "GET",
+        "GET", //
         url,
         parameters,
-        vec![("Authorization".to_string(), format!("Bearer {}", token))],
+        identifier.to_headers(),
         None,
     )
 }
 
 #[cached(result = true)]
 pub fn fetch_favorited_anime(
-    token: String,
+    identifier: Identifier,
     url: String,
     parameters: Vec<(String, String)>,
 ) -> Result<FavoriteResponse, Box<dyn std::error::Error>> {
-    if token.is_empty() {
-        return Err("Access token is not set".into());
-    }
     send_request::<FavoriteResponse>(
-        "GET",
+        "GET", //
         url,
         parameters,
-        vec![("Authorization".to_string(), format!("Bearer {}", token))],
+        identifier.to_headers(),
         None,
     )
 }
@@ -311,7 +331,7 @@ pub trait Fetchable: Sized {
     type Output;
 
     fn fetch(
-        token: String,
+        token: Identifier,
         url: String,
         parameters: Vec<(String, String)>,
     ) -> Result<Self::Response, Box<dyn std::error::Error>>;
@@ -319,7 +339,7 @@ pub trait Fetchable: Sized {
     fn from_response(response: Self::Response) -> Self::Output;
 }
 
-pub trait Update: Sized {
+pub trait Update: Sized + database::Entryable{
     type Response: serde::de::DeserializeOwned + Debug + Send;
 
     fn get_method(&self) -> &'static str;
@@ -328,6 +348,25 @@ pub trait Update: Sized {
     fn get_body(&self) -> Option<String>;
     fn get_id(&self) -> usize;
     fn get_belonging_list(&self) -> String;
+    fn to_offline_response(&self) -> Self::Response;
+    fn pre_update(&mut self);
+
+    fn update_local(
+        mut self,
+        database: &DatabaseManager,
+    ) -> Result<(usize, Self::Response), Box<dyn std::error::Error>>
+    {
+        self.pre_update();
+        let updated = match database.upsert(self) {
+            Ok(u) => u,
+            Err(e) => {
+                send_error!("Failed to update local database: {}", e);
+                return Err("local db error".into());
+            }
+        };
+        let response = updated.to_offline_response();
+        Ok((updated.get_id(), response))
+    }
 
     fn update(
         &self,

@@ -15,6 +15,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 use std::{collections::HashMap, env};
 use ureq::Agent;
+use std::process::Command;
+use std::fs;
 
 const STATE_LIFETIME: u64 = 300; // 5 minutes
 const CLEANUP_INTERVAL: u64 = 30; // 30 seconds
@@ -206,11 +208,11 @@ impl MalAgent {
                 };
                 html_content = html_content
                     .replace("{{redirect_url}}", &local_url)
-                    .replace("{{access_token}}", &token)
-                    .replace("{{refresh_token}}", &refresh_token)
+                    .replace("{{access_token}}", token)
+                    .replace("{{refresh_token}}", refresh_token)
                     .replace("{{expires_in}}", &expires_in.to_string());
 
-                return (html_content, 200);
+                (html_content, 200)
             }
 
             //ERROR: s
@@ -221,7 +223,7 @@ impl MalAgent {
                 };
 
                 html_content = html_content.replace("{{error}}", &e.to_string());
-                return (html_content, 500);
+                (html_content, 500)
             }
         }
     }
@@ -243,11 +245,18 @@ fn main() {
             if let Ok(mut guard) = cleanup_agent.lock() {
                 let removed = guard.cleanup_expired_data(max_age);
                 let now = Local::now().format("%Y-%m-%d %H:%M:%S");
+                let remaining = guard.temp_storage.len();
+
+                // do not need to print when nothing changes
+                if removed == 0 && remaining == 0 {
+                    continue;
+                }
+
                 println!(
                     "[{}] Cleaned up {} expired states, {} states remaining",
                     now,
                     removed,
-                    guard.temp_storage.len()
+                    remaining
                 );
                 std::io::stdout().flush().unwrap();
             }
@@ -259,7 +268,59 @@ fn main() {
     rouille::start_server("0.0.0.0:8000", move |request| {
         router!(request,
             (GET) (/) => {
-                rouille::Response::text("hello")
+                match fs::read_to_string("static/index.html") {
+                    Ok(content) => rouille::Response::html(content),
+                    Err(_) => rouille::Response::text("Failed to load index page").with_status_code(500),
+                }
+            },
+
+
+
+            (GET) (/health) => {
+                rouille::Response::text("ok")
+            },
+
+
+
+            (GET) (/pfp) => {
+                const VIDEO_DURATION: f64 = 219.108;
+
+                // Generate random timestamp
+                let mut rng = rand::rng();
+                let random_time = rng.random_range(0.0..VIDEO_DURATION);
+                let timestamp = format!("{:.2}", random_time);
+
+                // Create temp file path
+                let temp_path = format!("/tmp/pfp_{}.png", rng.random::<u32>());
+
+                // Extract frame at random timestamp and resize to 225x350
+                let _extract = Command::new("ffmpeg")
+                    .args([
+                        "-ss", &timestamp,
+                        "-i", "video/Bad_apple.webm",  // Updated path
+                        "-vframes", "1",
+                        "-vf", "scale=350:225",
+                        "-y",
+                        &temp_path
+                    ])
+                    .output()
+                    .expect("Failed to extract frame");
+
+                // Read the image file
+                let image_data = fs::read(&temp_path).expect("Failed to read image");
+
+                // Clean up temp file
+                let _ = fs::remove_file(&temp_path);
+
+                // Return as PNG image
+                rouille::Response::from_data("image/png", image_data)
+            },
+
+
+
+            (GET) (/id) => {
+                let guard = mal_agent.lock().unwrap();
+                rouille::Response::text(guard.client_id.clone())
             },
 
 
