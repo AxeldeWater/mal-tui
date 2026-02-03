@@ -145,6 +145,13 @@ impl SyncPopup {
                 if nav_config.is_select(&key_event.code)
                     && let Some(anime) = self.current_anime().cloned()
                 {
+                    if self.all_selected {
+                        match self.nav.get_selected_index() {
+                            0 => return Some(Action::Syncall(self.animes_to_sync.clone())),
+                            1 => return Some(Action::Discardall(self.animes_to_sync.clone())),
+                            _ => {}
+                        }
+                    }
                     match self.nav.get_selected_index() {
                         0 => return Some(Action::SyncAnime(anime)),
                         1 => return Some(Action::DiscardAnime(anime)),
@@ -176,6 +183,14 @@ impl SyncPopup {
             && is_click
             && let Some(anime) = self.current_anime().cloned()
         {
+            if self.all_selected {
+                match self.nav.get_selected_index() {
+                    0 => return Some(Action::Syncall(self.animes_to_sync.clone())),
+                    1 => return Some(Action::Discardall(self.animes_to_sync.clone())),
+                    _ => {}
+                }
+            }
+
             match self.nav.get_selected_index() {
                 0 => return Some(Action::SyncAnime(anime)),
                 1 => return Some(Action::DiscardAnime(anime)),

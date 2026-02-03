@@ -157,9 +157,9 @@ impl Screen for LaunchScreen {
     }
 
     fn background(&mut self) -> Option<JoinHandle<()>> {
-        // if !MalClient::user_is_logged_in() {
-        //     return None;
-        // }
+        if !MalClient::user_is_logged_in() {
+            return None;
+        }
 
         let info = self.app_info.clone();
         let id = self.get_name();

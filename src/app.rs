@@ -326,12 +326,15 @@ impl App {
                 }
                 Action::SyncAnime(anime) => {
                     // handled in background threads
-                    // match self.shared_info
-                    //     .mal_client
-                    //     .update_user_list(anime){
-                    //
-                    //
-                    // }
+                    match self.shared_info
+                        .mal_client
+                        .update_user_list(anime){
+                        Ok(_) => {},
+                        Err(e) => {
+                            self.screen_manager.show_error(format!("failed to sync local anime: {}", e));
+                        }
+                    }
+                    self.screen_manager.syncing_popup.next();
                 }
                 Action::DiscardAnime(anime) => {
                     // handled in background threads
@@ -345,6 +348,18 @@ impl App {
                 }
                 Action::Syncall(animes) => {
                     // handled in background threads
+                    for anime in animes{
+                        match self.shared_info
+                            .mal_client
+                            .update_user_list(anime){
+                            Ok(_) => {},
+                            Err(e) => {
+                                self.screen_manager.show_error(format!("failed to sync local anime: {}", e));
+                            }
+                        }
+                        self.screen_manager.syncing_popup.next();
+                    }
+                    self.screen_manager.syncing_popup.clear();
                 }
                 Action::Discardall(_animes) => {
                     // handled in background threads
