@@ -1,10 +1,10 @@
 # Server Part
 
-This code runs on a server that handles user authentication and acts as a backend relay for mal-cli, keeping the client secret hidden from the client application.
+This code runs on a server that handles user authentication and acts as a backend relay for mal-tui, keeping the client secret hidden from the client application.
 
 ## Why does this exist?
 
-The server exists so users don't have to create their own MyAnimeList API credentials (Client ID and Client Secret) to use mal-cli. By default, mal-cli connects to my hosted server at `https://mal-cli.dogfetus.no`.
+The server exists so users don't have to create their own MyAnimeList API credentials (Client ID and Client Secret) to use mal-tui. By default, mal-tui connects to my hosted server at `https://mal-tui.dogfetus.no`.
 
 However, if you prefer to host the server yourself (either on your own server or locally), you can follow this guide. Note that you'll need to create your own API credentials on MyAnimeList.
 
@@ -52,12 +52,12 @@ Create a `compose.yaml` file in the same directory as your `.env`:
 version: "3.9"
 services:
   app:
-    image: dogfetus/mal-cli:latest 
+    image: dogfetus/mal-tui:latest 
     env_file:
       - .env
     ports:
       - "8000:8000"
-    container_name: mal-cli
+    container_name: mal-tui
     restart: unless-stopped
 networks:
   default:
@@ -72,7 +72,7 @@ docker compose up -d
 
 Verify it's running:
 ```bash
-docker logs mal-cli
+docker logs mal-tui
 ```
 
 You should see: `"Now listening on localhost:8000"`
@@ -81,9 +81,9 @@ You should see: `"Now listening on localhost:8000"`
 
 You can also build and run the server from source if you prefer not to use Docker.
 
-### Step 4: Configure mal-cli Client
+### Step 4: Configure mal-tui Client
 
-Tell mal-cli to use your self-hosted server instead of the default one.
+Tell mal-tui to use your self-hosted server instead of the default one.
 
 1. Generate and edit the config:
    ```bash
@@ -93,7 +93,7 @@ Tell mal-cli to use your self-hosted server instead of the default one.
 2. Change this line:
    ```toml
    [network]
-   auth_server = "https://mal-cli.dogfetus.no"
+   auth_server = "https://mal-tui.dogfetus.no"
    ```
 
    To:

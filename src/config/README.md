@@ -5,7 +5,7 @@ Configs can be generated and edited using:
 mal -e
 ```
 
-To reset to default settings, simply delete the config file. mal-cli will automatically use the default settings, and you can regenerate it with `mal -e` again.
+To reset to default settings, simply delete the config file. mal-tui will automatically use the default settings, and you can regenerate it with `mal -e` again.
 
 ## Default Configuration
 
@@ -23,7 +23,7 @@ enable_mouse_capture = true
 
 [network]
 # where the auth backend server runs
-auth_server = "https://mal-cli.dogfetus.no"
+auth_server = "https://mal-tui.dogfetus.no"
 # the call back port on the local machine receiving the authorization token
 callback_port = 53400
 # if the port is busy the number of attempts + increments to bind to a new port
@@ -120,7 +120,7 @@ always_complete_episode = true
 post_playback_hook = "your-custom-player {url} --referrer={referrer} "
 ```
 
-With `always_complete_episode = false`, mal-cli won't automatically mark the episode as watched but will still add the anime to the "watching" list.
+With `always_complete_episode = false`, mal-tui won't automatically mark the episode as watched but will still add the anime to the "watching" list.
 
 ## Tips
 

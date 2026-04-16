@@ -1,4 +1,4 @@
-# mal-cli
+# mal-tui
 
 A Rust-based CLI/TUI for interacting with MyAnimeList integrated with ani-cli for streaming anime episodes.  
 Inspired by [ani-cli](https://github.com/pystardust/ani-cli).
@@ -6,7 +6,7 @@ Inspired by [ani-cli](https://github.com/pystardust/ani-cli).
 
 # Overview
 
-`mal-cli` allows you to log in with your MyAnimeList account, browse seasonal anime, search titles, view your lists, and play episodes directly in `mpv`, which will automatically update your animelist when you decide to watch something.
+`mal-tui` allows you to log in with your MyAnimeList account, browse seasonal anime, search titles, view your lists, and play episodes directly in `mpv`, which will automatically update your animelist when you decide to watch something.
 It combines **MAL integration** with **ani-cli-style playback** in a single lightweight terminal application.
 
 
@@ -45,7 +45,7 @@ Run with:
 ```bash
 mal
 # or
-mal-cli
+mal-tui
 ```
 
 </details>
@@ -54,15 +54,15 @@ mal-cli
 <summary><strong>Build from Source</strong></summary>
 
 ```bash
-git clone https://github.com/swstl/mal-cli.git
-cd mal-cli
+git clone https://github.com/swstl/mal-tui.git
+cd mal-tui
 cargo build --release
 ```
 
 Run with:
 
 ```bash
-./target/release/mal-cli
+./target/release/mal-tui
 ```
 
 </details>
@@ -91,7 +91,7 @@ By default, the keybindings are:
 
 ## Disclaimer
 
-`mal-cli` is designed to work best in [kitty](https://sw.kovidgoyal.net/kitty/) but should also work in any terminal that supports the **kitty graphics protocol** (for inline images and enhanced rendering).  
+`mal-tui` is designed to work best in [kitty](https://sw.kovidgoyal.net/kitty/) but should also work in any terminal that supports the **kitty graphics protocol** (for inline images and enhanced rendering).  
 Other terminals will work for basic functionality, but screenshots, covers, and some UI features may not display correctly.
 
 

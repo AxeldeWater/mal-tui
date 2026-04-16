@@ -1501,7 +1501,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "mal-cli"
+name = "mal-tui"
 version = "1.0.1"
 dependencies = [
  "anyhow",

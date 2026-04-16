@@ -59,7 +59,7 @@ impl Config {
     pub fn config_dir() -> PathBuf {
         std::env::var("HOME")
             .ok()
-            .map(|home| PathBuf::from(home).join(".config/mal-cli"))
+            .map(|home| PathBuf::from(home).join(".config/mal-tui"))
             .expect("Failed to get app directory")
     }
 
@@ -68,7 +68,7 @@ impl Config {
     pub fn data_dir() -> PathBuf {
         std::env::var("HOME")
             .ok()
-            .map(|home| PathBuf::from(home).join(".local/share/mal-cli"))
+            .map(|home| PathBuf::from(home).join(".local/share/mal-tui"))
             .expect("Failed to get app directory")
     }
 
@@ -118,7 +118,7 @@ impl Config {
             .status()
             .map_err(|e| {
                 eprintln!(
-                    "Failed to open editor: {} try edit manually: ~/.config/mal-cli/config.toml",
+                    "Failed to open editor: {} try edit manually: ~/.config/mal-tui/config.toml",
                     e
                 );
             })

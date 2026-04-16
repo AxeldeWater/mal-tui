@@ -29,7 +29,7 @@ fn parse_cli() -> bool {
                 return true;
             }
             "-h" | "--help" => {
-                println!("Usage: mal-cli [OPTIONS]");
+                println!("Usage: mal-tui [OPTIONS]");
                 println!();
                 println!("Options:");
                 println!("  -h, --help       Show this help message");
