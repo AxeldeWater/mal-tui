@@ -52,8 +52,11 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    // grab picker before anything else
+    let _ = utils::terminalCapabilities::get_picker();
     let terminal = ratatui::init();
     let config = Config::init();
+    let _ = std::fs::create_dir_all(Config::data_dir()).is_ok();
 
     // enable mouse capture
     if config.navigation.enable_mouse_capture {
@@ -73,3 +76,8 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
+
+
+
+//TODO: make sure the install scripts move mal-cli to mal-tui if it exists? or rather we move
+//specific content inside mal-cli to mal-tui to avoiod other mal-cli configs to get lost?
