@@ -45,32 +45,18 @@ jobs:
       - name: Build .deb and update apt repo
         run: |
           VERSION=${{ steps.version.outputs.version }}
-          apt-get install -y dpkg-dev
+          sudo apt-get install -y dpkg-dev
 
           mkdir -p deb-pkg/usr/bin deb-pkg/DEBIAN
           cp mal-tui-linux-x86_64 deb-pkg/usr/bin/mal-tui
           chmod +x deb-pkg/usr/bin/mal-tui
-          cat > deb-pkg/DEBIAN/control << EOF
-          Package: mal-tui
-          Version: $VERSION
-          Architecture: amd64
-          Maintainer: swstl <swstl@hotmail.com>
-          Description: A terminal client for MyAnimeList
-          EOF
+          printf 'Package: mal-tui\nVersion: %s\nArchitecture: amd64\nMaintainer: swstl <swstl@hotmail.com>\nDescription: A terminal client for MyAnimeList\n' "$VERSION" > deb-pkg/DEBIAN/control
           dpkg-deb --build --root-owner-group deb-pkg server/apt/pool/mal-tui_${VERSION}_amd64.deb
 
           cd server/apt
           dpkg-scanpackages pool > dists/stable/main/binary-amd64/Packages
           gzip -k -f dists/stable/main/binary-amd64/Packages
-          cat > dists/stable/Release << EOF
-          Origin: mal-tui
-          Label: mal-tui
-          Suite: stable
-          Codename: stable
-          Architectures: amd64
-          Components: main
-          Description: mal-tui apt repository
-          EOF
+          printf 'Origin: mal-tui\nLabel: mal-tui\nSuite: stable\nCodename: stable\nArchitectures: amd64\nComponents: main\nDescription: mal-tui apt repository\n' > dists/stable/Release
 
       - name: Commit apt repo changes
         run: |
