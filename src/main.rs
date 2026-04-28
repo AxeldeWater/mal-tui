@@ -47,6 +47,7 @@ fn parse_cli() -> bool {
 #[tokio::main]
 async fn main() -> Result<()> {
 
+
     let run_command = parse_cli();
     if run_command {
         return Ok(());
@@ -54,6 +55,7 @@ async fn main() -> Result<()> {
 
     // grab picker before anything else
     let _ = utils::terminalCapabilities::get_picker();
+    Config::migrate_from_mal_cli();
     let terminal = ratatui::init();
     let config = Config::init();
     let _ = std::fs::create_dir_all(Config::data_dir()).is_ok();
@@ -76,8 +78,3 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
-
-
-
-//TODO: make sure the install scripts move mal-cli to mal-tui if it exists? or rather we move
-//specific content inside mal-cli to mal-tui to avoiod other mal-cli configs to get lost?
