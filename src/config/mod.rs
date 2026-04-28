@@ -59,7 +59,7 @@ impl Config {
     pub fn config_dir() -> PathBuf {
         std::env::var("HOME")
             .ok()
-            .map(|home| PathBuf::from(home).join(".config/mal-cli"))
+            .map(|home| PathBuf::from(home).join(".config/mal-tui"))
             .expect("Failed to get app directory")
     }
 
@@ -68,8 +68,30 @@ impl Config {
     pub fn data_dir() -> PathBuf {
         std::env::var("HOME")
             .ok()
-            .map(|home| PathBuf::from(home).join(".local/share/mal-cli"))
+            .map(|home| PathBuf::from(home).join(".local/share/mal-tui"))
             .expect("Failed to get app directory")
+    }
+
+    pub fn migrate_from_mal_cli() {
+        let old = std::env::var("HOME")
+            .map(|home| PathBuf::from(home).join(".local/share/mal-cli"))
+            .unwrap_or_default();
+        let new = Self::data_dir();
+
+        if old.exists() && !new.exists() {
+            let _ = std::fs::create_dir_all(&new);
+            for entry in [".mal", "watch_history"] {
+                let src = old.join(entry);
+                if src.exists() {
+                    let dst = new.join(entry);
+                    if src.is_dir() {
+                        let _ = copy_dir(&src, &dst);
+                    } else {
+                        let _ = std::fs::copy(&src, &dst);
+                    }
+                }
+            }
+        }
     }
 
 
@@ -118,7 +140,7 @@ impl Config {
             .status()
             .map_err(|e| {
                 eprintln!(
-                    "Failed to open editor: {} try edit manually: ~/.config/mal-cli/config.toml",
+                    "Failed to open editor: {} try edit manually: ~/.config/mal-tui/config.toml",
                     e
                 );
             })
@@ -148,4 +170,18 @@ impl Config {
 
         config
     }
+}
+
+fn copy_dir(src: &PathBuf, dst: &PathBuf) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let dst_path = dst.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir(&entry.path(), &dst_path)?;
+        } else {
+            std::fs::copy(entry.path(), dst_path)?;
+        }
+    }
+    Ok(())
 }

@@ -1,0 +1,87 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'Cargo.toml'
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Get version from Cargo.toml
+        id: version
+        run: echo "version=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)" >> $GITHUB_OUTPUT
+
+      - name: Build in ubuntu:18.04 for GLIBC compatibility
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            ubuntu:18.04 bash -c "
+              apt-get update &&
+              apt-get install -y curl gcc libssl-dev pkg-config git libsqlite3-dev &&
+              curl https://sh.rustup.rs -sSf | sh -s -- -y &&
+              export PATH=\"\$HOME/.cargo/bin:\$PATH\" &&
+              cargo build --release &&
+              cp target/release/mal-tui mal-tui-linux-x86_64
+            "
+
+      - name: Create release
+        uses: softprops/action-gh-release@v3.0.0
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: v${{ steps.version.outputs.version }}
+          files: mal-tui-linux-x86_64
+
+  update-aur:
+    needs: build
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Setup SSH for AUR
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.AUR_SSH_KEY }}" > ~/.ssh/aur
+          chmod 600 ~/.ssh/aur
+          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
+          echo -e "Host aur.archlinux.org\n  IdentityFile ~/.ssh/aur\n  User aur" >> ~/.ssh/config
+
+      - name: Clone AUR repo
+        run: git clone ssh://aur@aur.archlinux.org/mal-tui.git
+
+      - name: Update PKGBUILD
+        run: |
+          cd mal-tui
+          VERSION=${{ needs.build.outputs.version }}
+          URL="https://github.com/swstl/mal-cli/releases/download/v$VERSION/mal-tui-linux-x86_64"
+          SHA256=$(curl -sL "$URL" | sha256sum | cut -d' ' -f1)
+          sed -i "s/^pkgver=.*/pkgver=$VERSION/" PKGBUILD
+          sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
+          sed -i "s/sha256sums_x86_64=.*/sha256sums_x86_64=('$SHA256')/" PKGBUILD
+
+      - name: Generate .SRCINFO
+        run: |
+          docker run --rm -v ${{ github.workspace }}/mal-tui:/pkg archlinux bash -c "
+            pacman -Sy --noconfirm base-devel &&
+            useradd -m builder &&
+            chown -R builder:builder /pkg &&
+            su - builder -c 'cd /pkg && makepkg --printsrcinfo > .SRCINFO'
+          "
+          sudo chown -R $USER:$USER ${{ github.workspace }}/mal-tui
+
+      - name: Commit and push to AUR
+        run: |
+          cd mal-tui
+          git config user.name "Dogfetus"
+          git config user.email "dogfetus@hotmail.com"
+          git add PKGBUILD .SRCINFO
+          git commit -m "update to v${{ needs.build.outputs.version }}"
+          git push

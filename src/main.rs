@@ -29,7 +29,7 @@ fn parse_cli() -> bool {
                 return true;
             }
             "-h" | "--help" => {
-                println!("Usage: mal-cli [OPTIONS]");
+                println!("Usage: mal-tui [OPTIONS]");
                 println!();
                 println!("Options:");
                 println!("  -h, --help       Show this help message");
@@ -47,13 +47,18 @@ fn parse_cli() -> bool {
 #[tokio::main]
 async fn main() -> Result<()> {
 
+
     let run_command = parse_cli();
     if run_command {
         return Ok(());
     }
 
+    // grab picker before anything else
+    let _ = utils::terminalCapabilities::get_picker();
+    Config::migrate_from_mal_cli();
     let terminal = ratatui::init();
     let config = Config::init();
+    let _ = std::fs::create_dir_all(Config::data_dir()).is_ok();
 
     // enable mouse capture
     if config.navigation.enable_mouse_capture {

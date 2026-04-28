@@ -140,3 +140,19 @@ pub struct Link {
 }
 
 
+
+
+//
+// argh tobeparsed
+//
+
+#[derive(Debug, Deserialize)]
+pub struct ToBeParsed {
+    pub data: ToBeParsedData,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ToBeParsedData {
+    pub _m: String,
+    pub tobeparsed: String,
+}

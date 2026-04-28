@@ -14,7 +14,7 @@ use crate::send_error;
 
 
 // const MAX_RETRIES: u16 = 10;
-// const BACKEND_URL: &str = "https://mal-cli.dogfetus.no";
+// const BACKEND_URL: &str = "https://mal-tui.dogfetus.no";
 // const BACKEND_URL: &str = "http://localhost:8000";
 
 #[derive(Debug, Clone, Deserialize)]

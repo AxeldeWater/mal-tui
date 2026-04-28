@@ -1,12 +1,12 @@
 services:
   app:
-    # image: dogfetus/mal-cli:latest 
+    # image: dogfetus/mal-tui:latest 
     build: .
     env_file:
       - .env
     ports:
       - "8000:8000"
-    container_name: mal-cli
+    container_name: mal-tui
     restart: unless-stopped
 
 

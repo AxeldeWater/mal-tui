@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 fn def_auth_server() -> String {
-    "https://mal-cli.dogfetus.no".to_string()
+    "https://mal-tui.dogfetus.no".to_string()
 }
 
 fn def_callback_port() -> u16 {

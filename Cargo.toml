@@ -1,6 +1,6 @@
 [package]
-name = "mal-cli"
-version = "1.0.1"
+name = "mal-tui"
+version = "1.1.0"
 edition = "2024"
 
 [dependencies]
@@ -27,4 +27,6 @@ indexmap = "2.10.0"
 toml = "0.9.7"
 shell-escape = "0.1.5"
 database = { path = "./deps/database" }
-rusqlite = "0.37.0"
+rusqlite = { version = "0.37.0", features = ["bundled"] }
+openssl = { version = "0.10.78", features = ["vendored"] }
+base64 = "0.22.1"

@@ -1,27 +1,35 @@
-mod allanime;
+use base64::engine::general_purpose::STANDARD;
+use base64::engine::Engine;
+use openssl::{hash::{hash, MessageDigest}, symm::{decrypt, Cipher}};
 use allanime::EpisodeSearch;
 use allanime::LinksSearch;
 use allanime::ShowEdge;
 use allanime::ShowSearch;
 use allanime::SourceUrl;
+mod allanime;
 use regex::Regex;
 use url::Url;
 
-use crate::config::Config;
+use crate::{config::Config, player::allanime::EpisodeDataRoot};
 use crate::mal::models::anime::Anime;
 use crate::mal::network::send_request;
 use crate::mal::network::send_request_expect_text;
 use crate::params;
+use crate::player::allanime::ToBeParsed;
 use crate::utils::stringManipulation::levenshtein_distance;
 use serde_json::json;
 use shell_escape::escape;
 use std::io::ErrorKind;
 use std::process::Command;
 
+
 const BASE: &str = "https://allanime.day";
 const API: &str = "https://api.allanime.day/api";
 const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0";
-const REF: &str = "https://allmanga.to";
+const REF: &str = "https://youtu-chan.com";
+const KEY: &str = "Xot36i3lK3:v1";
+const MODE: &str = "sub";
+
 
 #[derive(Debug, Clone)]
 pub enum PlayError {
@@ -162,6 +170,7 @@ impl AnimePlayer {
             eprintln!("Failed to run pre-playback hook: {}", e);
         };
 
+
         // get available shows for the given anime title
         let shows = self.get_shows(anime.title.clone())?;
 
@@ -206,38 +215,38 @@ impl AnimePlayer {
 
     // searches for shows with the given name and returns a list of ShowEdge
     fn get_shows(&self, show: String) -> Result<Vec<ShowEdge>, PlayError> {
-        let gql = r#"
-      query( $search: SearchInput, $limit: Int, $page: Int,
-             $translationType: VaildTranslationTypeEnumType,
-             $countryOrigin: VaildCountryOriginEnumType ) {
-        shows(
-          search: $search, limit: $limit, page: $page,
-          translationType: $translationType, countryOrigin: $countryOrigin
-        ) {
-          edges { _id name availableEpisodes }
+        let search_gql = r#"
+        query( $search: SearchInput, $limit: Int, $page: Int, $translationType: VaildTranslationTypeEnumType, $countryOrigin: VaildCountryOriginEnumType ) {
+            shows( search: $search, limit: $limit, page: $page, translationType: $translationType, countryOrigin: $countryOrigin ) {
+                edges { _id name availableEpisodes __typename }
+            }
         }
-      }"#;
+        "#;
 
         let variables = json!({
-            "search": {"allowAdult": false, "allowUnknown": false, "query": show},
+            "search": {
+                "allowAdult": true, // the configs decides this
+                "allowUnknown": false,
+                "query": show,
+            },
             "limit": 40,
             "page": 1,
-            "translationType": "sub",
+            "translationType": MODE,
             "countryOrigin": "ALL"
-        })
-        .to_string();
+        });
+
+        let gql_body = json!({
+            "variables": variables,
+            "query": search_gql,
+        });
 
         let headers = params![
             "User-Agent" => UA,
             "Referer" => REF,
+            "Content-Type" => "application/json",
         ];
 
-        let params = params![
-            "query" => gql,
-            "variables" => variables,
-        ];
-
-        let result = send_request::<ShowSearch>("GET", API.to_string(), params, headers, None);
+        let result = send_request::<ShowSearch>("POST", API.to_string(), vec![], headers, Some(&gql_body.to_string()));
         match result {
             Ok(response) => {
                 if response.data.shows.edges.is_empty() {
@@ -307,40 +316,41 @@ impl AnimePlayer {
         show_id: &str,
         episode: u32,
     ) -> Result<Vec<SourceUrl>, PlayError> {
-        let gql = r#"
-        query($showId: String!, $translationType: VaildTranslationTypeEnumType!, $episodeString: String!) {
-            episode(showId: $showId, translationType: $translationType, episodeString: $episodeString) {
-                episodeString sourceUrls
+        let episode_gql = r#"
+            query($showId: String!, $translationType: VaildTranslationTypeEnumType!, $episodeString: String!) {
+                episode(showId: $showId, translationType: $translationType, episodeString: $episodeString) {
+                    episodeString sourceUrls
+                }
             }
-        }
-      "#;
+        "#;
 
         let variables = json!({
             "showId": show_id,
-            "translationType": "sub",
+            "translationType": MODE,
             "episodeString": episode.to_string(),
-        })
-        .to_string();
+        });
+
+        let gql_body = json!({
+            "variables": variables,
+            "query": episode_gql,
+        });
 
         let headers = params![
             "User-Agent" => UA,
             "Referer" => REF,
+            "Content-Type" => "application/json",
         ];
 
-        let params = params![
-            "query" => gql,
-            "variables" => variables,
-        ];
+        let encoded = send_request::<ToBeParsed>("POST", API.to_string(), vec![], headers, Some(&gql_body.to_string())).unwrap();
+        let decoded = Self::decode_tobeparsed(&encoded.data.tobeparsed);
 
-        let result = send_request::<EpisodeSearch>("GET", API.to_string(), params, headers, None);
-
-        match result {
+        match decoded {
             Ok(mut response) => {
-                if response.data.episode.source_urls.is_empty() {
+                if response.episode.source_urls.is_empty() {
                     return Err(PlayError::NoResults("No episodes found".to_string()));
                 }
 
-                for source in response.data.episode.source_urls.iter_mut() {
+                for source in response.episode.source_urls.iter_mut() {
                     if source.source_url.starts_with("http") {
                         continue;
                     }
@@ -370,10 +380,41 @@ impl AnimePlayer {
                     }
                 }
 
-                Ok(response.data.episode.source_urls)
+                Ok(response.episode.source_urls)
             }
             Err(e) => Err(PlayError::Other(format!("Error fetching episodes: {}", e))),
         }
+    }
+
+    fn decode_tobeparsed(blob: &str) -> Result<EpisodeDataRoot, PlayError> {
+        let key = hash(MessageDigest::sha256(), KEY.as_bytes())
+            .map_err(|e| PlayError::Other(e.to_string()))?;
+
+        let data = STANDARD
+            .decode(blob.trim())
+            .map_err(|e| PlayError::Other(e.to_string()))?;
+
+        if data.len() < 29 {
+            return Err(PlayError::Other("blob too short".into()));
+        }
+
+        let mut ctr_block = [0u8; 16];
+        ctr_block[..12].copy_from_slice(&data[1..13]);
+        ctr_block[12..].copy_from_slice(&2u32.to_be_bytes());
+
+        let ct_end = data.len() - 16;
+        let plain = decrypt(
+            Cipher::aes_256_ctr(),
+            &key,
+            Some(&ctr_block),
+            &data[13..ct_end])
+            .map_err(|e| PlayError::Other(e.to_string()))?;
+
+        let plain_str = String::from_utf8_lossy(&plain);
+
+        serde_json::from_str::<EpisodeDataRoot>(&plain_str).map_err(|e| {
+            PlayError::Other(format!("parse: {} | raw: {}", e, &plain_str[..plain_str.len().min(300)]))
+        })
     }
 
     fn decode_clock(enc: &str) -> Result<(String, bool), String> {
