@@ -37,14 +37,12 @@ It combines **MAL integration** with **ani-cli-style playback** in a single ligh
 <summary><strong>AUR (Arch)</strong></summary>
 
 ```bash
-yay -S mal
+yay -S mal-tui
 ````
 
 Run with:
 
 ```bash
-mal
-# or
 mal-tui
 ```
 
