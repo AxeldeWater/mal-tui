@@ -1,0 +1,42 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+      - change-name
+    paths:
+      - 'Cargo.toml'
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version from Cargo.toml
+        id: version
+        run: echo "version=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)" >> $GITHUB_OUTPUT
+
+      - name: Build in ubuntu:18.04 for GLIBC compatibility
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            ubuntu:18.04 bash -c "
+              apt-get update &&
+              apt-get install -y curl gcc libssl-dev pkg-config git libsqlite3-dev &&
+              curl https://sh.rustup.rs -sSf | sh -s -- -y &&
+              export PATH=\"\$HOME/.cargo/bin:\$PATH\" &&
+              cargo build --release &&
+              cp target/release/mal-tui mal-tui-linux-x86_64
+            "
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: v${{ steps.version.outputs.version }}
+          files: mal-tui-linux-x86_64
