@@ -1,0 +1,7 @@
+Origin: mal-tui
+Label: mal-tui
+Suite: stable
+Codename: stable
+Architectures: amd64
+Components: main
+Description: mal-tui apt repository

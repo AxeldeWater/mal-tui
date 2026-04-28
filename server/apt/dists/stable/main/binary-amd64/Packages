@@ -1,0 +1,11 @@
+Package: mal-tui
+Version: 1.1.2
+Architecture: amd64
+Maintainer: swstl <swstl@hotmail.com>
+Filename: pool/mal-tui_1.1.2_amd64.deb
+Size: 6859968
+MD5sum: b6c7ecd15dee37e25de3f465b257c409
+SHA1: 44cb61fb489f63132daa50236c6f6706c369f038
+SHA256: 47ec7a29b5355ddc93f23c5d896d22791184342ade3d7c2d00b734832ea9d0bb
+Description: A terminal client for MyAnimeList
+
