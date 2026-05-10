@@ -9,6 +9,7 @@ use std::io::Read;
 use std::sync::OnceLock;
 use std::thread;
 use std::time::Duration;
+use ureq::config::IpFamily;
 use ureq::{Agent, Error};
 use url::Url;
 
@@ -27,6 +28,7 @@ static AGENT: OnceLock<Agent> = OnceLock::new();
 fn get_agent() -> &'static Agent {
     AGENT.get_or_init(|| {
         Agent::config_builder()
+            .ip_family(IpFamily::Ipv4Only)
             .timeout_global(Some(Duration::from_secs(10)))
             .build()
             .into()
