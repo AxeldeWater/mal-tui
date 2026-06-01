@@ -682,13 +682,20 @@ where
 }
 
 /// mini version of anime model for favorties
-#[derive(Debug, Clone, Deserialize, Serialize)]
+//
+// Favorites are scraped from the public MAL profile page (see
+// `network::fetch_favorited_anime`); these structs are just the carrier the
+// `Fetchable` impl returns. `data`/`anime` default to empty so an absent or
+// unparseable favorites section degrades to "no favorites" rather than erroring.
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct FavoriteResponse {
+    #[serde(default)]
     pub data: JikanData,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct JikanData {
+    #[serde(default)]
     pub anime: Vec<FavoriteAnime>,
 }
 

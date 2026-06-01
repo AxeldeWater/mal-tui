@@ -50,7 +50,7 @@ impl Config {
             network: Network::default(),
             player: Player::default(),
             theme: Theme::default(),
-            allow_nsfw: Some(false),
+            allow_nsfw: Some(true),
         }
     }
 

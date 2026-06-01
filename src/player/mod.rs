@@ -7,8 +7,36 @@ use crate::config::Config;
 pub use self::video_player::PlayError;
 pub use self::video_player::PlayResult;
 
+use std::io::{BufRead, BufReader};
 use std::{process::{Command, Stdio}};
 use shell_escape::escape;
+
+/// Strip ANSI/terminal control sequences from a string so it renders cleanly
+/// in the TUI error box. ani-cli colours its output (e.g. `die` uses red),
+/// and those raw escape bytes otherwise break ratatui's width/wrapping.
+fn strip_ansi(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\x1b' => {
+                // CSI sequence: ESC '[' params... final-byte (0x40..=0x7e)
+                if chars.peek() == Some(&'[') {
+                    chars.next();
+                    while let Some(&p) = chars.peek() {
+                        chars.next();
+                        if ('\x40'..='\x7e').contains(&p) {
+                            break;
+                        }
+                    }
+                }
+            }
+            '\r' => {} // carriage returns reset the cursor; drop them
+            _ => out.push(c),
+        }
+    }
+    out
+}
 
 pub struct AnimePlayer {
     video_player: VideoPlayer,
@@ -126,7 +154,7 @@ impl AnimePlayer {
         }
         let new_path = format!("{}:{}", shim_dir.display(), std::env::var("PATH").unwrap_or_default());
 
-        let child = Command::new("ani-cli")
+        let mut child = Command::new("ani-cli")
             .env("PATH", new_path)
             .env("ANICLI_TARGET", &anime.title)
             .arg("--no-detach")
@@ -141,18 +169,57 @@ impl AnimePlayer {
 
         println!("spawned ani-cli with pid {}", child.id());
 
-        let output = child.wait_with_output()
-            .map_err(|e| PlayError::Other(e.to_string()))?;
+        // Drain stderr on its own thread: prints ani-cli's progress/error
+        // output live and captures it so we can surface the real failure
+        // reason (ani-cli reports failures via `die` on stderr). Draining
+        // both pipes concurrently also avoids a deadlock if one fills up.
+        let child_stderr = child.stderr.take()
+            .ok_or_else(|| PlayError::Other("failed to capture ani-cli stderr".to_string()))?;
+        let stderr_handle = std::thread::spawn(move || {
+            let mut captured = String::new();
+            for line in BufReader::new(child_stderr).lines().map_while(Result::ok) {
+                eprintln!("{}", line);
+                captured.push_str(&line);
+                captured.push('\n');
+            }
+            captured
+        });
 
-        let stdout = String::from_utf8_lossy(&output.stdout);
+        // Read stdout line-by-line so output appears live, while still
+        // capturing every line so we can find the marker afterwards.
+        let child_stdout = child.stdout.take()
+            .ok_or_else(|| PlayError::Other("failed to capture ani-cli stdout".to_string()))?;
+        let mut lines = Vec::new();
+        for line in BufReader::new(child_stdout).lines() {
+            let line = line.map_err(|e| PlayError::Other(e.to_string()))?;
+            // Don't echo the internal marker line to the user.
+            if !line.contains("__MAL_MPV__") {
+                println!("{}", line);
+            }
+            lines.push(line);
+        }
 
-        let marker = stdout
-            .lines()
+        let status = child.wait().map_err(|e| PlayError::Other(e.to_string()))?;
+        let stderr = stderr_handle.join().unwrap_or_default();
+
+        let marker = lines
+            .iter()
             .find(|l| l.contains("__MAL_MPV__"))
-            .ok_or_else(|| PlayError::Other(format!(
-                "missing __MAL_MPV__ marker. raw stdout was:\n{}",
-                stdout
-            )))?;
+            .ok_or_else(|| {
+                // ani-cli reports the failure reason via `die` on its last
+                // stderr line; earlier lines are just progress noise.
+                let clean = strip_ansi(&stderr);
+                let reason = clean
+                    .lines()
+                    .rev()
+                    .find(|l| !l.trim().is_empty())
+                    .unwrap_or("ani-cli gave no reason");
+                PlayError::Other(format!(
+                    "ani-cli exited with {} before returning a video:\n{}",
+                    status,
+                    reason.trim()
+                ))
+            })?;
 
         let mut parts = marker.split('\t');
         parts.next(); // skip the marker token

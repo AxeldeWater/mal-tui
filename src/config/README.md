@@ -17,13 +17,14 @@ nav_up = ["Up", { Char = "k" }]
 nav_down = ["Down", { Char = "j" }]
 nav_left = ["Left", { Char = "h" }]
 nav_right = ["Right", { Char = "l" }]
+# cycle to the next/previous screen from anywhere (wraps around)
+tab_next = ["Tab"]
+tab_prev = ["BackTab"]
 select = ["Enter", { Char = " " }]
 close = ["Esc", { Char = "q" }]
 enable_mouse_capture = true
 
 [network]
-# where the auth backend server runs
-auth_server = "https://mal-tui.dogfetus.no"
 # the call back port on the local machine receiving the authorization token
 callback_port = 53400
 # if the port is busy the number of attempts + increments to bind to a new port

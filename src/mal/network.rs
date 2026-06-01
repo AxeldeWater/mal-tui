@@ -1,6 +1,9 @@
 use crate::send_error;
 
-use super::models::anime::{AnimeResponse, FavoriteResponse};
+use super::models::anime::{AnimeResponse, FavoriteAnime, FavoriteResponse, JikanData};
+use regex::Regex;
+use std::collections::HashSet;
+use std::sync::LazyLock;
 use super::models::user::User;
 use cached::proc_macro::cached;
 use database::DatabaseManager;
@@ -129,19 +132,88 @@ pub fn fetch_user(
     )
 }
 
+// We scrape the favorites straight off the public MAL profile page
+// (https://myanimelist.net/profile/<user>/favorites) instead of going through
+// Jikan. Jikan proxies MAL from its own servers and intermittently fails to
+// reach them (HTTP 200 with an `UpstreamException` body), whereas the user's
+// own machine reaches MAL fine. The favorites are server-rendered HTML, so a
+// small regex pass is enough to pull out id / title / image.
 #[cached(result = true)]
 pub fn fetch_favorited_anime(
     identifier: Identifier,
     url: String,
     parameters: Vec<(String, String)>,
 ) -> Result<FavoriteResponse, Box<dyn std::error::Error>> {
-    send_request::<FavoriteResponse>(
-        "GET", //
-        url,
-        parameters,
-        identifier.to_headers(),
-        None,
-    )
+    let html = send_request_expect_text("GET", url, parameters, identifier.to_headers(), None)?;
+    Ok(FavoriteResponse {
+        data: JikanData {
+            anime: parse_favorited_anime(&html),
+        },
+    })
+}
+
+// matches one favorited anime: the image link carries the id, the lazyloaded
+// `data-src` image and the `alt` title all in one tag.
+static FAVORITE_ANIME_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"/anime/(\d+)/[^"]*"\s*>\s*<img[^>]*?data-src="([^"]+)"[^>]*?alt="([^"]*)""#)
+        .expect("valid favorite-anime regex")
+});
+
+fn parse_favorited_anime(html: &str) -> Vec<FavoriteAnime> {
+    // favorites are grouped into anime / manga / character / people containers;
+    // restrict to the anime block so we don't pick up the others.
+    let block = anime_favorites_block(html).unwrap_or(html);
+
+    let mut seen = HashSet::new();
+    FAVORITE_ANIME_RE
+        .captures_iter(block)
+        .filter_map(|caps| {
+            let id = caps.get(1)?.as_str().parse::<usize>().ok()?;
+            if !seen.insert(id) {
+                return None;
+            }
+            Some(FavoriteAnime {
+                id,
+                image: full_size_image(caps.get(2)?.as_str()),
+                title: decode_html_entities(caps.get(3)?.as_str()),
+            })
+        })
+        .collect()
+}
+
+// slice out just the "boxlist-container anime" section, ending at whichever
+// other favorites category comes next (if any).
+fn anime_favorites_block(html: &str) -> Option<&str> {
+    let start = html.find("boxlist-container anime")?;
+    let rest = &html[start..];
+    let end = ["boxlist-container manga", "boxlist-container character", "boxlist-container people"]
+        .iter()
+        .filter_map(|marker| rest.find(marker))
+        .min()
+        .unwrap_or(rest.len());
+    Some(&rest[..end])
+}
+
+// MAL serves a resized thumbnail like ".../r/100x140/images/anime/1/2.jpg?s=..".
+// Strip the "/r/<w>x<h>" segment and the cache-busting query for the full image.
+fn full_size_image(url: &str) -> String {
+    let url = url.split('?').next().unwrap_or(url);
+    if let Some(idx) = url.find("/r/") {
+        let after = &url[idx + "/r/".len()..];
+        if let Some(slash) = after.find('/') {
+            return format!("{}{}", &url[..idx], &after[slash..]);
+        }
+    }
+    url.to_string()
+}
+
+fn decode_html_entities(text: &str) -> String {
+    text.replace("&amp;", "&")
+        .replace("&quot;", "\"")
+        .replace("&#039;", "'")
+        .replace("&#39;", "'")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
 }
 
 fn build_url(
@@ -383,5 +455,62 @@ pub trait Update: Sized + database::Entryable{
             self.get_body().as_deref(),
         )?;
         Ok((self.get_id(), update))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_favorited_anime;
+
+    // trimmed-down sample of a real MAL `/profile/<user>/favorites` page.
+    const SAMPLE: &str = r#"
+        <li><a href="https://myanimelist.net/anime/season">Seasonal Anime</a></li>
+        <div class="boxlist-container anime mb16">
+          <div class="boxlist col-4">
+            <div class="di-tc">
+              <a href="https://myanimelist.net/anime/42897/Horimiya">
+                <img class="lazyload image profile-w48" src="https://cdn.myanimelist.net/images/spacer.gif" data-src="https://cdn.myanimelist.net/r/100x140/images/anime/1695/111486.jpg?s=abc" alt="Horimiya" />
+              </a>
+            </div>
+            <div class="di-tc va-t pl8 data">
+              <div class="title"><a href="https://myanimelist.net/anime/42897/Horimiya">Horimiya</a></div>
+            </div>
+          </div>
+          <div class="boxlist col-4">
+            <div class="di-tc">
+              <a href="https://myanimelist.net/anime/9999/Title">
+                <img class="lazyload image profile-w48" src="spacer.gif" data-src="https://cdn.myanimelist.net/images/anime/2/100.jpg" alt="Kaguya-sama &amp; &quot;Love&quot;" />
+              </a>
+            </div>
+          </div>
+        </div>
+        <div class="boxlist-container manga mb16">
+          <a href="https://myanimelist.net/anime/77777/InsideMangaBlock">
+            <img data-src="https://cdn.myanimelist.net/images/anime/3/3.jpg" alt="ShouldBeExcluded" />
+          </a>
+        </div>
+    "#;
+
+    #[test]
+    fn parses_anime_favorites_only() {
+        let favs = parse_favorited_anime(SAMPLE);
+        let ids: Vec<usize> = favs.iter().map(|f| f.id).collect();
+        // the seasonal nav link and the entry inside the manga container are excluded
+        assert_eq!(ids, vec![42897, 9999]);
+    }
+
+    #[test]
+    fn strips_resize_segment_and_query_from_image() {
+        let favs = parse_favorited_anime(SAMPLE);
+        assert_eq!(
+            favs[0].image,
+            "https://cdn.myanimelist.net/images/anime/1695/111486.jpg"
+        );
+    }
+
+    #[test]
+    fn decodes_html_entities_in_title() {
+        let favs = parse_favorited_anime(SAMPLE);
+        assert_eq!(favs[1].title, "Kaguya-sama & \"Love\"");
     }
 }

@@ -46,6 +46,8 @@ fn parse_cli() -> bool {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+
+
     // when invoked via symlink as `fzf` or `mpv`,
     if let Some(name) = std::env::args()
         .next()
@@ -70,6 +72,7 @@ async fn main() -> Result<()> {
     let config = Config::init();
     let _ = std::fs::create_dir_all(Config::data_dir()).is_ok();
 
+
     // enable mouse capture
     if config.navigation.enable_mouse_capture {
         execute!(std::io::stderr(), EnableMouseCapture)?;
@@ -81,6 +84,7 @@ async fn main() -> Result<()> {
             | KeyboardEnhancementFlags::REPORT_EVENT_TYPES
         )
     )?;
+
 
     // start the app
     let mut app = App::new(terminal);

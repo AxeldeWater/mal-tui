@@ -26,6 +26,14 @@ fn def_right() -> Vec<KeyCode> {
     vec![KeyCode::Right, KeyCode::Char('l')]
 }
 
+fn def_tab_next() -> Vec<KeyCode> {
+    vec![KeyCode::Tab]
+}
+
+fn def_tab_prev() -> Vec<KeyCode> {
+    vec![KeyCode::BackTab]
+}
+
 fn def_select() -> Vec<KeyCode> {
     vec![KeyCode::Enter, KeyCode::Char(' ')]
 }
@@ -54,6 +62,13 @@ pub struct Navigation {
     #[serde(default = "def_right")]
     pub nav_right: Vec<KeyCode>,
 
+    // cycle to the next/previous screen from anywhere (e.g. Tab / Shift+Tab)
+    #[serde(default = "def_tab_next")]
+    pub tab_next: Vec<KeyCode>,
+
+    #[serde(default = "def_tab_prev")]
+    pub tab_prev: Vec<KeyCode>,
+
     #[serde(default = "def_select")]
     pub select: Vec<KeyCode>,
 
@@ -72,6 +87,8 @@ impl Default for Navigation {
             nav_down: def_down(),
             nav_left: def_left(),
             nav_right: def_right(),
+            tab_next: def_tab_next(),
+            tab_prev: def_tab_prev(),
             select: def_select(),
             close: def_close(),
             enable_mouse_capture: def_mouse_capture(),
@@ -92,6 +109,16 @@ impl Navigation {
         } else {
             NavDirection::None 
         }
+    }
+
+    // if the key cycles to the next screen
+    pub fn is_tab_next(&self, key: &KeyCode) -> bool {
+        self.tab_next.contains(key)
+    }
+
+    // if the key cycles to the previous screen
+    pub fn is_tab_prev(&self, key: &KeyCode) -> bool {
+        self.tab_prev.contains(key)
     }
 
     // if the select key is pressed

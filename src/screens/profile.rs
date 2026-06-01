@@ -415,6 +415,7 @@ impl Screen for ProfileScreen {
                     for anime in favorited_animes.clone() {
                         ImageManager::query_image_for_fetching(&image_manager, &anime);
                     }
+
                     let update =
                         BackgroundUpdate::new(id.clone()).set("favorited_animes", favorited_animes);
                     info.app_sx.send(Event::BackgroundNotice(update)).ok();

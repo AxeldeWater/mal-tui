@@ -3,13 +3,51 @@ use crate::mal::MalClient;
 use crate::mal::models::anime::{Anime, AnimeId};
 use crate::screens::widgets::sync;
 use std::collections::HashMap;
-use ratatui::layout::Layout;
+use ratatui::layout::{Alignment, Layout, Rect};
+use ratatui::text::Line;
+use ratatui::widgets::{Clear, Paragraph, Wrap};
 use std::thread::JoinHandle;
 use widgets::navbar;
 use widgets::popup;
 use ratatui::Frame;
 use std::any::Any;
 use screens::*;
+
+// Below these dimensions some screens (the profile layout in particular) compute
+// areas that fall outside the terminal buffer, which makes ratatui panic. When the
+// window is smaller than this we render a notice instead of drawing any screen.
+const MIN_TERMINAL_WIDTH: u16 = 70;
+const MIN_TERMINAL_HEIGHT: u16 = 30;
+
+// Renders a centered "terminal too small" notice. Kept deliberately simple: it only
+// ever draws a wrapped paragraph into a sub-rect of `area`, so it cannot itself
+// overflow the buffer no matter how tiny the terminal gets.
+fn render_terminal_too_small(frame: &mut Frame, area: Rect) {
+    frame.render_widget(Clear, area);
+
+    let lines = vec![
+        Line::from("Terminal too small"),
+        Line::from(format!(
+            "{}x{} — need at least {}x{}",
+            area.width, area.height, MIN_TERMINAL_WIDTH, MIN_TERMINAL_HEIGHT
+        )),
+    ];
+
+    let paragraph = Paragraph::new(lines)
+        .alignment(Alignment::Center)
+        .wrap(Wrap { trim: true });
+
+    // vertically center the two lines while staying inside the buffer
+    let y_offset = area.height.saturating_sub(2) / 2;
+    let text_area = Rect {
+        x: area.x,
+        y: area.y + y_offset,
+        width: area.width,
+        height: area.height - y_offset,
+    };
+
+    frame.render_widget(paragraph, text_area);
+}
 
 #[allow(non_snake_case)]
 mod screenTemplate;
@@ -201,6 +239,12 @@ impl ScreenManager {
     }
 
     pub fn render_screen(&mut self, frame: &mut Frame) {
+        let area = frame.area();
+        if area.width < MIN_TERMINAL_WIDTH || area.height < MIN_TERMINAL_HEIGHT {
+            render_terminal_too_small(frame, area);
+            return;
+        }
+
         self.current_screen.draw(frame);
         if self.current_screen.uses_navbar() {
             let nav_bar_area = Layout::default()
@@ -257,6 +301,17 @@ impl ScreenManager {
 
                 if self.overlay.is_open() {
                     return self.overlay.handle_keyboard(key_event);
+                }
+
+                // global tab navigation: cycle between screens from anywhere
+                if self.current_screen.uses_navbar() {
+                    let nav = &crate::config::Config::global().navigation;
+                    if nav.is_tab_next(&key_event.code) {
+                        return self.navbar.cycle(true).map(Action::SwitchScreen);
+                    }
+                    if nav.is_tab_prev(&key_event.code) {
+                        return self.navbar.cycle(false).map(Action::SwitchScreen);
+                    }
                 }
 
                 if self.navbar.is_selected() {

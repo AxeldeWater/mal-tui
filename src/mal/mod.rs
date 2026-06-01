@@ -3,14 +3,14 @@ pub mod network;
 mod oauth;
 
 use crate::config::Config;
-use crate::mal::network::{Fetchable, Identifier, send_request_expect_text};
+use crate::mal::network::{Fetchable, Identifier};
 use crate::{params, send_error};
 use chrono::{Datelike, Local};
 use database::{DatabaseManager, Entryable};
 use models::anime::{Anime, AnimeId, FavoriteAnime, fields};
 use models::user::User;
 use network::Update;
-use oauth::{Identity, refresh_token};
+use oauth::{CLIENT_ID, Identity, refresh_token};
 use regex::Regex;
 use std::any::type_name;
 use std::sync::{Arc, RwLock};
@@ -18,7 +18,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use std::{fs, thread::JoinHandle};
 
 const BASE_URL: &str = "https://api.myanimelist.net/v2";
-const EXTRA_URL: &str = "https://api.jikan.moe/v4";
 const CLIENT_FOLDER: &str = ".mal";
 const CLIENT_FILE: &str = "client";
 const SECONDS_IN_A_DAY: u64 = 86400;
@@ -28,7 +27,6 @@ type BoxedSendError = Box<dyn std::error::Error + Send + 'static>;
 //TODO: encrypt the tokens
 #[derive(Debug, Clone)]
 pub struct MalClient {
-    client_id: Arc<RwLock<Option<String>>>,
     identity: Arc<RwLock<Option<Identity>>>,
     re: Regex,
     local_db: DatabaseManager, // uses this when user isnt signed in
@@ -37,7 +35,6 @@ pub struct MalClient {
 impl MalClient {
     pub fn new(local_db: DatabaseManager) -> Self {
         let client = Self {
-            client_id: Arc::new(RwLock::new(None)),
             identity: Arc::new(RwLock::new(None)),
             re: Regex::new(r"\(([0-9,]+)/([0-9,]+|Unknown)\)").unwrap(),
             local_db,
@@ -145,6 +142,7 @@ impl MalClient {
 
             let mut identity = self.identity.write().unwrap();
             *identity = Some(Identity {
+                token_type: "Bearer".to_string(),
                 access_token: at,
                 refresh_token: rt,
                 expires_in: ea,
@@ -191,21 +189,7 @@ impl MalClient {
     }
 
     pub fn get_client_id(&self) -> Option<String> {
-        if let Some(client_id) = &self.client_id.read().unwrap().clone() {
-            return Some(client_id.clone());
-        }
-
-        let client_id = send_request_expect_text(
-            "GET",
-            format!("{}/id", Config::global().network.auth_server),
-            vec![],
-            vec![],
-            None,
-        )
-        .ok()?;
-
-        self.client_id.write().unwrap().replace(client_id.clone());
-        Some(client_id)
+        Some(CLIENT_ID.to_string())
     }
 
     pub fn current_season() -> (u16, String) {
@@ -353,7 +337,7 @@ impl MalClient {
 
     pub fn get_favorited_anime(&self, username: String) -> Option<Vec<FavoriteAnime>> {
         self.send_request::<FavoriteAnime>(
-            format!("{}/users/{}/favorites", EXTRA_URL, username),
+            format!("https://myanimelist.net/profile/{}/favorites", username),
             params![],
         )
     }

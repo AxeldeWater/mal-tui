@@ -1,9 +1,9 @@
-use crate::{config::Config, mal::{Fetchable, network::{Identifier, fetch_user}}, utils::imageManager::HasDisplayableImage};
+use crate::{mal::{Fetchable, network::{Identifier, fetch_user}}, utils::imageManager::HasDisplayableImage};
 use serde::{Deserialize, Serialize};
 use super::anime::{Anime, FavoriteAnime};
 
 fn default_picture() -> String {
-    Config::global().network.auth_server.clone() + "/pfp"
+    "https://mal-tui.dogfetus.no/pfp".to_string()
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

@@ -53,6 +53,23 @@ impl NavBar {
         self
     }
 
+    // cycle the active screen one step left/right (wraps around) and return
+    // the screen to switch to. used by the global tab navigation.
+    pub fn cycle(&mut self, forward: bool) -> Option<&'static str> {
+        if self.options.is_empty() {
+            return None;
+        }
+        let len = self.options.len();
+        let new_button = if forward {
+            (self.old_button + 1) % len
+        } else {
+            (self.old_button + len - 1) % len
+        };
+        self.selected_button = new_button;
+        self.old_button = new_button;
+        Some(name_to_screen(self.options[new_button]))
+    }
+
     pub fn handle_keyboard(&mut self, key_event: KeyEvent) -> Option<Action> {
         let modifier = key_event.modifiers.contains(crossterm::event::KeyModifiers::CONTROL);
         let nav = &Config::global().navigation;
