@@ -281,6 +281,29 @@ impl MalClient {
         )
     }
 
+    // Fetch a single anime by id with the full field set. Unlike the list
+    // endpoints this returns one anime object, so it goes through
+    // `fetch_single_anime` rather than the `Fetchable`/list path.
+    pub fn get_anime_by_id(&self, id: u64) -> Option<Anime> {
+        let identity = self.identity.read().unwrap();
+        let identifier = match identity.as_ref() {
+            Some(token) => Identifier::new(Some(token.access_token.clone()), None),
+            None => Identifier::new(None, self.get_client_id()),
+        };
+
+        match network::fetch_single_anime(
+            identifier,
+            format!("{}/anime/{}", BASE_URL, id),
+            params!["fields" => fields::ALL.join(",")],
+        ) {
+            Ok(anime) => Some(anime),
+            Err(e) => {
+                send_error!("Error fetching anime {}: {:?}", id, e);
+                None
+            }
+        }
+    }
+
     pub fn get_user(&self) -> Option<User> {
         self.send_request::<User>(
             format!("{}/users/@me", BASE_URL),

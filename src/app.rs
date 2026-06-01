@@ -40,6 +40,7 @@ pub enum Action {
     PlayEpisode(AnimeId, u32),
     SwitchScreen(&'static str),
     ShowOverlay(AnimeId),
+    ShowRelated(AnimeId),
     NavbarSelect(bool),
     ShowError(String),
     SyncAnimes(Vec<(bool, Anime)>),
@@ -323,6 +324,9 @@ impl App {
                 }
                 Action::ShowOverlay(anime_id) => {
                     self.screen_manager.toggle_overlay(anime_id);
+                }
+                Action::ShowRelated(anime_id) => {
+                    self.screen_manager.show_related(anime_id);
                 }
                 Action::NavbarSelect(selected) => {
                     self.screen_manager.toggle_navbar(selected);

@@ -73,6 +73,25 @@ where
     Ok(watch_status_from_api(s))
 }
 
+// MAL's `statistics` object returns its status counts as JSON strings
+// (e.g. "watching": "238321") even though they are integers. Accept either a
+// string or a number so single-anime detail responses deserialize cleanly.
+fn de_u64_flexible<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StrOrNum {
+        Str(String),
+        Num(u64),
+    }
+    match StrOrNum::deserialize(deserializer)? {
+        StrOrNum::Str(s) => s.trim().parse::<u64>().map_err(serde::de::Error::custom),
+        StrOrNum::Num(n) => Ok(n),
+    }
+}
+
 fn default_true() -> bool {
     true
 }
@@ -448,6 +467,29 @@ impl Anime {
             .collect::<Vec<String>>()
             .join(", ")
     }
+
+    /// The title to display, honoring the user's `prefer_romaji` config.
+    ///
+    /// MAL's main `title` field is the romaji title; `alternative_titles.en`
+    /// is the English title (sent as `""`, or absent → "N/A"). When romaji is
+    /// preferred we use `title`; otherwise we prefer English and fall back to
+    /// romaji when no English title is available.
+    pub fn display_title(&self) -> String {
+        let en = &self.alternative_titles.en;
+        let en_available = !en.is_empty() && en != "N/A";
+
+        if crate::config::Config::global().prefer_romaji() {
+            if !self.title.is_empty() {
+                self.title.clone()
+            } else {
+                en.clone()
+            }
+        } else if en_available {
+            en.clone()
+        } else {
+            self.title.clone()
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -592,16 +634,22 @@ pub struct Recommendation {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Status {
+    #[serde(deserialize_with = "de_u64_flexible", default)]
     pub watching: u64,
+    #[serde(deserialize_with = "de_u64_flexible", default)]
     pub completed: u64,
+    #[serde(deserialize_with = "de_u64_flexible", default)]
     pub on_hold: u64,
+    #[serde(deserialize_with = "de_u64_flexible", default)]
     pub dropped: u64,
+    #[serde(deserialize_with = "de_u64_flexible", default)]
     pub plan_to_watch: u64,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Statistics {
     pub status: Status,
+    #[serde(deserialize_with = "de_u64_flexible", default)]
     pub num_list_users: u64,
 }
 impl Default for Statistics {

@@ -1,6 +1,6 @@
 use crate::send_error;
 
-use super::models::anime::{AnimeResponse, FavoriteAnime, FavoriteResponse, JikanData};
+use super::models::anime::{Anime, AnimeResponse, FavoriteAnime, FavoriteResponse, JikanData};
 use regex::Regex;
 use std::collections::HashSet;
 use std::sync::LazyLock;
@@ -109,6 +109,24 @@ pub fn fetch_anime(
     parameters: Vec<(String, String)>,
 ) -> Result<AnimeResponse, Box<dyn std::error::Error>> {
     send_request::<AnimeResponse>(
+        "GET", //
+        url,
+        parameters,
+        identifier.to_headers(),
+        None,
+    )
+}
+
+// The single-anime endpoint (`/anime/{id}`) returns one anime object directly,
+// not the `{ data: [...], paging }` list shape that `AnimeResponse` decodes, so
+// it gets its own fetch that deserializes `Anime` on its own.
+#[cached(size = 2000, result = true)]
+pub fn fetch_single_anime(
+    identifier: Identifier,
+    url: String,
+    parameters: Vec<(String, String)>,
+) -> Result<Anime, Box<dyn std::error::Error>> {
+    send_request::<Anime>(
         "GET", //
         url,
         parameters,

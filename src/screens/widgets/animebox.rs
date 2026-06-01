@@ -77,12 +77,7 @@ impl AnimeBox {
         //////////////////////////////////////
         //////// Define the text info ////////
         //////////////////////////////////////
-        let has_en_title = !anime.alternative_titles.en.is_empty();
-        let title_text = if has_en_title {
-            anime.alternative_titles.en.clone()
-        } else {
-            anime.title.clone()
-        };
+        let title_text = anime.display_title();
 
         let info_text = "Scr: \nTyp: \nEpi: \nSta: \nSea: ";
         let season = DisplayString::new()
@@ -105,7 +100,14 @@ impl AnimeBox {
             )
         };
 
-        let user_stats_value_text = anime.my_list_status.status.to_string();
+        let user_stats_value_text = if anime.my_list_status.score > 0 {
+            format!(
+                "{}★({})",
+                anime.my_list_status.status, anime.my_list_status.score
+            )
+        } else {
+            anime.my_list_status.status.to_string()
+        };
 
         //////////////////////////////////////
         //////// Color text elements  ////////

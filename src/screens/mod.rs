@@ -61,6 +61,7 @@ mod search;
 mod login;
 mod info;
 mod list;
+mod related;
 
 // this is a macro to define screens in a more structured way
 // it allows for screens to be implemented in a single place and work across the app
@@ -156,6 +157,7 @@ define_screens! {
     SEASONS => "Seasons" => seasons::SeasonsScreen,
     SEARCH => "Search" => search::SearchScreen,
     LIST => "List" => list::ListScreen,
+    RELATED => "Related" => related::RelatedScreen,
 
     // To add more::
     // SCREEN1 => "<structName>" => <module>::<structName>Screen,
@@ -200,6 +202,10 @@ pub trait Screen {
         None
     }
     fn apply_update(&mut self, update: BackgroundUpdate) {}
+
+    // hook for screens that can be opened pre-loaded with a specific anime
+    // (the Related screen builds its timeline from it). Default: ignore.
+    fn build_related(&mut self, _anime: AnimeId) {}
 }
 
 pub struct ScreenManager {
@@ -224,6 +230,7 @@ impl ScreenManager {
                 .add_screen(SEASONS)
                 .add_screen(SEARCH)
                 .add_screen(LIST)
+                .add_screen(RELATED)
                 .add_screen(PROFILE),
             overlay: popup::AnimePopup::new(passable_info.clone()),
             error_overlay: popup::ErrorPopup::new(),
@@ -272,6 +279,14 @@ impl ScreenManager {
     pub fn toggle_overlay(&mut self, anime: AnimeId) {
         self.overlay.set_anime(anime);
         self.overlay.open();
+    }
+
+    // switch to the Related screen and immediately build its timeline from the
+    // given anime (used by the "Related series" button in the anime popup)
+    pub fn show_related(&mut self, anime: AnimeId) {
+        self.overlay.close();
+        self.change_screen(RELATED);
+        self.current_screen.build_related(anime);
     }
 
     pub fn refresh(&mut self) {

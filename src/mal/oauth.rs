@@ -14,7 +14,9 @@ use crate::send_error;
 
 const AUTHORIZE: &str = "https://myanimelist.net/v1/oauth2/authorize";
 const TOKEN: &str = "https://myanimelist.net/v1/oauth2/token";
-pub const CLIENT_ID: &str = "0b58e985aa74283d56529f193e9b1e3f";
+// Injected at build time by build.rs (from the MAL_CLIENT_ID env var or a
+// gitignored .env file) so it is not hard-coded in the source.
+pub const CLIENT_ID: &str = env!("MAL_CLIENT_ID");
 
 
 #[derive(Debug, Clone, Deserialize)]

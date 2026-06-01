@@ -11,6 +11,8 @@ To reset to default settings, simply delete the config file. mal-tui will automa
 
 ```toml
 allow_nsfw = false
+# show titles in romaji (MAL's main title) instead of English
+prefer_romaji = false
 
 [navigation]
 nav_up = ["Up", { Char = "k" }]

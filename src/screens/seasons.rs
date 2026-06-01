@@ -382,6 +382,11 @@ impl Screen for SeasonsScreen {
             ("Duration:", anime.average_episode_duration.to_string()),
             ("Rating:", anime.rating),
             ("Score:", anime.mean.to_string()),
+            ("Your Score:", if anime.my_list_status.score > 0 {
+                anime.my_list_status.score.to_string()
+            } else {
+                "-".to_string()
+            }),
             ("Ranked:", anime.rank.to_string()),
             ("Popularity:", anime.popularity.to_string()),
             ("Studios:", studios_string),
