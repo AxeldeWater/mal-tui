@@ -291,10 +291,27 @@ impl MalClient {
             None => Identifier::new(None, self.get_client_id()),
         };
 
+        // The timeline walks many anime sequentially, so keep each response
+        // small: drop the bulkiest fields it never shows (recommendations embeds
+        // whole anime objects; pictures is a gallery; statistics/background are
+        // unused here). Everything the boxes and the popup read is kept.
+        let heavy = [
+            fields::STATISTICS,
+            fields::RECOMMENDATIONS,
+            fields::PICTURES,
+            fields::BACKGROUND,
+        ];
+        let trimmed_fields = fields::ALL
+            .iter()
+            .filter(|f| !heavy.contains(f))
+            .copied()
+            .collect::<Vec<_>>()
+            .join(",");
+
         match network::fetch_single_anime(
             identifier,
             format!("{}/anime/{}", BASE_URL, id),
-            params!["fields" => fields::ALL.join(",")],
+            params!["fields" => trimmed_fields],
         ) {
             Ok(anime) => Some(anime),
             Err(e) => {
