@@ -73,6 +73,25 @@ where
     Ok(watch_status_from_api(s))
 }
 
+// MAL's `statistics` object returns its status counts as JSON strings
+// (e.g. "watching": "238321") even though they are integers. Accept either a
+// string or a number so single-anime detail responses deserialize cleanly.
+fn de_u64_flexible<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StrOrNum {
+        Str(String),
+        Num(u64),
+    }
+    match StrOrNum::deserialize(deserializer)? {
+        StrOrNum::Str(s) => s.trim().parse::<u64>().map_err(serde::de::Error::custom),
+        StrOrNum::Num(n) => Ok(n),
+    }
+}
+
 fn default_true() -> bool {
     true
 }
@@ -615,16 +634,22 @@ pub struct Recommendation {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Status {
+    #[serde(deserialize_with = "de_u64_flexible", default)]
     pub watching: u64,
+    #[serde(deserialize_with = "de_u64_flexible", default)]
     pub completed: u64,
+    #[serde(deserialize_with = "de_u64_flexible", default)]
     pub on_hold: u64,
+    #[serde(deserialize_with = "de_u64_flexible", default)]
     pub dropped: u64,
+    #[serde(deserialize_with = "de_u64_flexible", default)]
     pub plan_to_watch: u64,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Statistics {
     pub status: Status,
+    #[serde(deserialize_with = "de_u64_flexible", default)]
     pub num_list_users: u64,
 }
 impl Default for Statistics {

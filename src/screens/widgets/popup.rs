@@ -5,7 +5,6 @@ use std::{
     },
     thread::JoinHandle,
 };
-use chrono::Utc;
 
 use crate::{
     app::{Action, Event},
@@ -81,7 +80,7 @@ impl AnimePopup {
     pub fn new(info: ExtraInfo) -> Self {
         let buttons = vec![
             "Play".to_string(),
-            "Nothing yet".to_string(),
+            "Related series".to_string(),
             "Play from start".to_string(),
             "Open".to_string(),
         ];
@@ -371,7 +370,8 @@ impl AnimePopup {
                             return Some(Action::PlayAnime(self.anime_id));
                         }
                         1 => {
-                            // play a specific episode
+                            // jump to the Related screen, auto-building from this anime
+                            return Some(Action::ShowRelated(self.anime_id));
                         }
 
                         2 => {
