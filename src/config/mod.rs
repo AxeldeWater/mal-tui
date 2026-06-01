@@ -31,6 +31,9 @@ pub struct Config {
     pub theme: Theme,
 
     pub allow_nsfw: Option<bool>,
+
+    /// Show titles in romaji (MAL's main title) instead of English.
+    pub prefer_romaji: Option<bool>,
 }
 
 impl Config {
@@ -51,7 +54,13 @@ impl Config {
             player: Player::default(),
             theme: Theme::default(),
             allow_nsfw: Some(true),
+            prefer_romaji: Some(false),
         }
+    }
+
+    /// Whether titles should be shown in romaji instead of English.
+    pub fn prefer_romaji(&self) -> bool {
+        self.prefer_romaji.unwrap_or(false)
     }
 
 

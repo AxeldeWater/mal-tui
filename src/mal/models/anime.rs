@@ -448,6 +448,29 @@ impl Anime {
             .collect::<Vec<String>>()
             .join(", ")
     }
+
+    /// The title to display, honoring the user's `prefer_romaji` config.
+    ///
+    /// MAL's main `title` field is the romaji title; `alternative_titles.en`
+    /// is the English title (sent as `""`, or absent → "N/A"). When romaji is
+    /// preferred we use `title`; otherwise we prefer English and fall back to
+    /// romaji when no English title is available.
+    pub fn display_title(&self) -> String {
+        let en = &self.alternative_titles.en;
+        let en_available = !en.is_empty() && en != "N/A";
+
+        if crate::config::Config::global().prefer_romaji() {
+            if !self.title.is_empty() {
+                self.title.clone()
+            } else {
+                en.clone()
+            }
+        } else if en_available {
+            en.clone()
+        } else {
+            self.title.clone()
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

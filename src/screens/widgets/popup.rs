@@ -673,11 +673,7 @@ impl AnimePopup {
             height: info_area.height.saturating_sub(buttons_area.height),
         };
 
-        let title = if anime.alternative_titles.en.is_empty() {
-            anime.title.clone()
-        } else {
-            anime.alternative_titles.en.clone()
-        };
+        let title = anime.display_title();
 
         let title_text = Paragraph::new(title)
             .alignment(Alignment::Center)

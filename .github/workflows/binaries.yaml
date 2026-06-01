@@ -52,6 +52,8 @@ jobs:
           tool: cross
 
       - name: Build
+        env:
+          MAL_CLIENT_ID: ${{ secrets.MAL_CLIENT_ID }}
         run: cross build --release --target ${{ matrix.target }}
 
       - name: Prepare artifacts

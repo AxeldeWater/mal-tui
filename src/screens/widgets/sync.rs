@@ -534,11 +534,7 @@ impl SyncPopup {
         }
 
         // 2. Render Text Info
-        let title = if anime.alternative_titles.en.is_empty() {
-            &anime.title
-        } else {
-            &anime.alternative_titles.en
-        };
+        let title = anime.display_title();
 
         let [title_area, text_area] = Layout::default()
             .direction(Direction::Vertical)

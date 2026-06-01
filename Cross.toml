@@ -1,0 +1,5 @@
+# `cross` runs the build inside a Docker container; host env vars are not
+# visible there unless explicitly passed through. Forward the OAuth client id
+# (set from a GitHub Actions secret in CI) so build.rs can read it.
+[build.env]
+passthrough = ["MAL_CLIENT_ID"]

@@ -68,6 +68,11 @@ async fn main() -> Result<()> {
     // grab picker before anything else
     let _ = utils::terminalCapabilities::get_picker();
     Config::migrate_from_mal_cli();
+
+    // DEBUG: show which MAL client id is compiled into this binary.
+    // Printed before the TUI takes over the screen.
+    eprintln!("[mal-tui] using MAL client id: {}", mal::CLIENT_ID);
+
     let terminal = ratatui::init();
     let config = Config::init();
     let _ = std::fs::create_dir_all(Config::data_dir()).is_ok();
