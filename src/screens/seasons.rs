@@ -343,21 +343,24 @@ impl Screen for SeasonsScreen {
             ])
             .areas(bottom_right);
 
-        let has_english_title = !anime.alternative_titles.en.is_empty();
-        let title = if has_english_title {
-            Paragraph::new(format!(
-                "English:\n{}\n\nJapanese:\n{}",
-                anime.alternative_titles.en, anime.title
-            ))
-            .style(Style::default().fg(Config::global().theme.text))
+        // Label the primary title to match the user's prefer_romaji setting
+        // (romaji = MAL's main `title`; english = the alternative english title).
+        let en = &anime.alternative_titles.en;
+        let has_english = !en.is_empty() && en != "N/A";
+        let title_text = if Config::global().prefer_romaji() {
+            format!(
+                "Romaji:\n{}\n\nEnglish:\n{}",
+                anime.title,
+                if has_english { en.as_str() } else { "N/A" }
+            )
+        } else if has_english {
+            format!("English:\n{}\n\nRomaji:\n{}", en, anime.title)
         } else {
-            Paragraph::new(format!(
-                "English:\n{}\n\nJapanese:\n{}",
-                anime.title, anime.alternative_titles.ja
-            ))
+            format!("English:\n{}\n\nJapanese:\n{}", anime.title, anime.alternative_titles.ja)
+        };
+        let title = Paragraph::new(title_text)
             .style(Style::default().fg(Config::global().theme.text))
-        }
-        .block(Block::default().padding(Padding::new(1, 1, 1, 1)));
+            .block(Block::default().padding(Padding::new(1, 1, 1, 1)));
         let genres_string = anime
             .genres
             .iter()
