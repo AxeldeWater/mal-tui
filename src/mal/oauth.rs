@@ -181,6 +181,14 @@ where
                     rouille::Response::html(html_content)
                 },
 
+                // the success page references this image instead of inlining it
+                (GET) (/image) => {
+                    rouille::Response::from_data(
+                        "image/png",
+                        include_bytes!("../templates/image.png").to_vec(),
+                    )
+                },
+
                 _ => {
                     // println!("Got request for unknown path");
                     rouille::Response::empty_404()
@@ -202,10 +210,6 @@ where
                     // println!("Server stopped");
                 });
 
-                // Return the port we ACTUALLY bound to (port + i), not the
-                // base port — otherwise the redirect_uri points at a port
-                // nothing is listening on and the browser gets "connection
-                // refused".
                 return Some((port + i, joinable));
             }
 
