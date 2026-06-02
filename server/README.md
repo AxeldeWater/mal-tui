@@ -1,3 +1,7 @@
+# (No longer used)
+This code exists but is no longer used in the current version of mal-tui, as client id is now just added in the binary at compile time. And the oauth flow is handled directly in the client instead of through a relay server. However, the code is still available in the repository for reference.
+
+
 # Server Part
 
 This code runs on a server that handles user authentication and acts as a backend relay for mal-tui, keeping the client secret hidden from the client application.
