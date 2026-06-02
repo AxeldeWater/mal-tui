@@ -81,7 +81,7 @@ Run with:
 
 
 ## Keybindings
-Configs can be generated and edited using `mal -e`.
+Configs can be generated and edited using `mal-tui -e`.
 
 By default, the keybindings are:
 - `Tab` (and `shift + Tab`) - Switch between different screens
