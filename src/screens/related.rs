@@ -651,7 +651,7 @@ impl RelatedScreen {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .title("Related — search an anime")
+                    .title("Search")
                     .border_set(border::ROUNDED),
             )
             .style(Style::default().fg(if focused {

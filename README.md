@@ -27,6 +27,9 @@ It combines **MAL integration** with **ani-cli-style playback** in a single ligh
 ### Anime List
 ![Anime List](docs/5.png)
 
+### Related Series
+![Related Series](docs/7.png)
+
 ### Profile
 ![Profile](docs/6.png)
 
@@ -81,6 +84,7 @@ Run with:
 Configs can be generated and edited using `mal -e`.
 
 By default, the keybindings are:
+- `Tab` (and `shift + Tab`) - Switch between different screens
 - `h`, `j`, `k`, `l` (vim keys) or arrow keys for navigation
 - `Ctrl + <key>` - Move to other parts of the same screen
 - `Enter` / `Space` - select anime or other item
