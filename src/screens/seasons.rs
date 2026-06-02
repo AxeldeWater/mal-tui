@@ -347,16 +347,16 @@ impl Screen for SeasonsScreen {
         // (romaji = MAL's main `title`; english = the alternative english title).
         let en = &anime.alternative_titles.en;
         let has_english = !en.is_empty() && en != "N/A";
-        let title_text = if Config::global().prefer_romaji() {
-            format!(
-                "Romaji:\n{}\n\nEnglish:\n{}",
-                anime.title,
-                if has_english { en.as_str() } else { "N/A" }
-            )
-        } else if has_english {
+        // Labels follow the AniList convention: Romaji (Latin romanization),
+        // English (english title), Native (Japanese script). `anime.title` is
+        // the romaji; `alternative_titles.ja` is the native script.
+        let title_text = if has_english && !Config::global().prefer_romaji() {
             format!("English:\n{}\n\nRomaji:\n{}", en, anime.title)
         } else {
-            format!("English:\n{}\n\nJapanese:\n{}", anime.title, anime.alternative_titles.ja)
+            format!(
+                "Romaji:\n{}\n\nNative:\n{}",
+                anime.title, anime.alternative_titles.ja
+            )
         };
         let title = Paragraph::new(title_text)
             .style(Style::default().fg(Config::global().theme.text))
