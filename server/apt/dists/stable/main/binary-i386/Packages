@@ -1,11 +1,11 @@
 Package: mal-tui
-Version: 1.1.6
+Version: 1.1.7
 Architecture: i386
 Maintainer: swstl <swstl@hotmail.com>
-Filename: pool/i386/mal-tui_1.1.6_i386.deb
-Size: 5888840
-MD5sum: 912e0ce25dd089d00011006786916960
-SHA1: a51d7b3fece3bcadef7aad5887ddb8f732b402c7
-SHA256: 3bb3aced04463ade07789350be68821beaae5d62ad03e3b407cc749680cab202
+Filename: pool/i386/mal-tui_1.1.7_i386.deb
+Size: 6399754
+MD5sum: 7824a167a0edfecb64f2847f37aae6fd
+SHA1: 9d4884bc8c0ac6be75116e625002894a201a3a76
+SHA256: fb10422e3433d5c1180420e90c63fb74826b42a9f832e43833305c16d8dabd22
 Description: A terminal client for MyAnimeList
 
