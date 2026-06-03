@@ -16,6 +16,7 @@ use chrono::Local;
 use chrono::Utc;
 use crossterm::event::DisableMouseCapture;
 use crossterm::event::EnableMouseCapture;
+use crossterm::event::PopKeyboardEnhancementFlags;
 use image::DynamicImage;
 use ratatui::DefaultTerminal;
 use std::io;
@@ -382,5 +383,6 @@ impl Drop for App {
         // restore terminal
         ratatui::restore();
         crossterm::execute!(std::io::stderr(), DisableMouseCapture).ok();
+        crossterm::execute!(std::io::stdout(), PopKeyboardEnhancementFlags).ok();
     }
 }
