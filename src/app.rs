@@ -303,7 +303,7 @@ impl App {
 
         self.terminal = ratatui::init();
         if let Err(e) = set_input_flags() {
-            self.screen_manager.show_error(format!("Failed to restore terminal modes: {e}"));
+            self.screen_manager.show_error(format!("Failed to set terminal input modes: {e}"));
         }
         None
     }

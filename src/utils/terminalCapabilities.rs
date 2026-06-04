@@ -96,9 +96,9 @@ pub fn set_input_flags() -> std::io::Result<()> {
 }
 
 pub fn restore_input_flags() -> std::io::Result<()> {
-    // disable mouse capture
-    crossterm::execute!(std::io::stdout(), PopKeyboardEnhancementFlags).ok();
-    crossterm::execute!(std::io::stderr(), DisableMouseCapture).ok();
+    // run both regardless of an early failure 
+    let popped = crossterm::execute!(std::io::stdout(), PopKeyboardEnhancementFlags);
+    let mouse = crossterm::execute!(std::io::stderr(), DisableMouseCapture);
 
-    Ok(())
+    popped.and(mouse)
 }

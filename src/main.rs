@@ -70,7 +70,7 @@ async fn main() -> Result<()> {
     let _ = Config::init();
     let _ = std::fs::create_dir_all(Config::data_dir()).is_ok();
 
-    // enable mouse capture, and enchanced keyboard input
+    // enable mouse capture, and enhanced keyboard input
     set_input_flags()?;
 
     // start the app
