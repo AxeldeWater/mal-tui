@@ -8,15 +8,14 @@ use crate::screens::BackgroundUpdate;
 use crate::screens::ScreenManager;
 use crate::utils::errorBus;
 use crate::utils::store::Store;
+use crate::utils::terminalCapabilities::set_input_flags;
+use crate::utils::terminalCapabilities::restore_input_flags;
 use crate::player;
 
 use database::DatabaseManager;
 use chrono::DateTime;
 use chrono::Local;
 use chrono::Utc;
-use crossterm::event::DisableMouseCapture;
-use crossterm::event::EnableMouseCapture;
-use crossterm::event::PopKeyboardEnhancementFlags;
 use image::DynamicImage;
 use ratatui::DefaultTerminal;
 use std::io;
@@ -253,7 +252,9 @@ impl App {
             episode
         };
 
-        crossterm::execute!(std::io::stderr(), DisableMouseCapture).ok();
+        if let Err(e) = restore_input_flags() {
+            self.screen_manager.show_error(format!("Failed to disable terminal modes: {e}"));
+        }
 
         match self
             .anime_player
@@ -300,8 +301,10 @@ impl App {
             }
         }
 
-        crossterm::execute!(std::io::stderr(), EnableMouseCapture).ok();
         self.terminal = ratatui::init();
+        if let Err(e) = set_input_flags() {
+            self.screen_manager.show_error(format!("Failed to restore terminal modes: {e}"));
+        }
         None
     }
 
@@ -381,8 +384,8 @@ impl App {
 impl Drop for App {
     fn drop(&mut self) {
         // restore terminal
+
+        restore_input_flags().ok();
         ratatui::restore();
-        crossterm::execute!(std::io::stderr(), DisableMouseCapture).ok();
-        crossterm::execute!(std::io::stdout(), PopKeyboardEnhancementFlags).ok();
     }
 }

@@ -1,6 +1,14 @@
 use ratatui_image::picker::Picker;
 use std::{sync::OnceLock, thread, time::Duration};
-use crate::send_error;
+use crate::{config::Config, send_error};
+
+use crossterm::execute;
+use crossterm::event::EnableMouseCapture;
+use crossterm::event::PushKeyboardEnhancementFlags;
+use crossterm::event::KeyboardEnhancementFlags;
+use crossterm::event::DisableMouseCapture;
+use crossterm::event::PopKeyboardEnhancementFlags;
+
 
 static GLOBAL_PICKER: OnceLock<Picker> = OnceLock::new();
 pub const TERMINAL_RATIO: f32 = 2.20; // terminal "pixel" ratio (length to width of a single pixel)
@@ -68,4 +76,29 @@ impl TerminalCapabilities {
 
 pub fn get_picker() -> &'static Picker {
     TerminalCapabilities::instance().picker()
+}
+
+pub fn set_input_flags() -> std::io::Result<()> {
+    // enable mouse capture
+    if Config::global().navigation.enable_mouse_capture {
+        execute!(std::io::stderr(), EnableMouseCapture)?;
+    }
+
+    execute!(
+        std::io::stdout(),
+            PushKeyboardEnhancementFlags(
+            KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+            | KeyboardEnhancementFlags::REPORT_EVENT_TYPES
+        )
+    )?;
+
+    Ok(())
+}
+
+pub fn restore_input_flags() -> std::io::Result<()> {
+    // disable mouse capture
+    crossterm::execute!(std::io::stdout(), PopKeyboardEnhancementFlags).ok();
+    crossterm::execute!(std::io::stderr(), DisableMouseCapture).ok();
+
+    Ok(())
 }
