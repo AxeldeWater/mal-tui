@@ -7,10 +7,7 @@ mod screens;
 mod utils;
 
 use crate::app::App;
-use crossterm::event::EnableMouseCapture;
-use crossterm::event::PushKeyboardEnhancementFlags;
-use crossterm::event::KeyboardEnhancementFlags;
-use crossterm::execute;
+use crate::utils::terminalCapabilities::set_input_flags;
 use anyhow::Result;
 use config::Config;
 
@@ -70,22 +67,11 @@ async fn main() -> Result<()> {
     Config::migrate_from_mal_cli();
 
     let terminal = ratatui::init();
-    let config = Config::init();
+    let _ = Config::init();
     let _ = std::fs::create_dir_all(Config::data_dir()).is_ok();
 
-
-    // enable mouse capture
-    if config.navigation.enable_mouse_capture {
-        execute!(std::io::stderr(), EnableMouseCapture)?;
-    }
-        execute!(
-        std::io::stdout(),
-            PushKeyboardEnhancementFlags(
-            KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
-            | KeyboardEnhancementFlags::REPORT_EVENT_TYPES
-        )
-    )?;
-
+    // enable mouse capture, and enhanced keyboard input
+    set_input_flags()?;
 
     // start the app
     let mut app = App::new(terminal);
